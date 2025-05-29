@@ -61,12 +61,16 @@ public class VoxyRenderSystem {
     public final ChunkBoundRenderer chunkBoundRenderer;
 
     public VoxyRenderSystem(WorldEngine world, ServiceThreadPool threadPool) {
+        this(world, threadPool, 1L<<32);
+    }
+
+    public VoxyRenderSystem(WorldEngine world, ServiceThreadPool threadPool, long maxGeometryCapacity) {
         //Trigger the shared index buffer loading
         SharedIndexBuffer.INSTANCE.id();
         Capabilities.init();//Ensure clinit is called
 
         this.worldIn = world;
-        this.renderer = new RenderService(world, threadPool);
+        this.renderer = new RenderService(world, threadPool, maxGeometryCapacity);
         this.postProcessing = new PostProcessing();
         int minSec = MinecraftClient.getInstance().world.getBottomSectionCoord()>>5;
         int maxSec = (MinecraftClient.getInstance().world.getTopSectionCoord()-1)>>5;

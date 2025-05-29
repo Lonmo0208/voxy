@@ -11,6 +11,7 @@ import me.cortex.voxy.commonImpl.WorldIdentifier;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.ObjectAllocator;
 import net.minecraft.client.world.ClientWorld;
+import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
@@ -25,6 +26,8 @@ public abstract class MixinWorldRenderer implements IGetVoxyRenderSystem {
     @Shadow private Frustum frustum;
     @Shadow private @Nullable ClientWorld world;
     @Unique private VoxyRenderSystem renderer;
+    @Unique private VoxyRenderSystem overworldRenderer;
+    @Unique private WorldIdentifier overworldIdentifier;
 
     @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/WorldRenderer;setupTerrain(Lnet/minecraft/client/render/Camera;Lnet/minecraft/client/render/Frustum;ZZ)V", shift = At.Shift.AFTER))
     private void injectSetup(ObjectAllocator allocator, RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, Matrix4f positionMatrix, Matrix4f projectionMatrix, CallbackInfo ci) {
@@ -35,6 +38,11 @@ public abstract class MixinWorldRenderer implements IGetVoxyRenderSystem {
 
     @Override
     public VoxyRenderSystem getVoxyRenderSystem() {
+        return this.renderer;
+    }
+
+    @Override
+    public VoxyRenderSystem getVoxyOverworldRenderSystem() {
         return this.renderer;
     }
 
@@ -51,6 +59,9 @@ public abstract class MixinWorldRenderer implements IGetVoxyRenderSystem {
         if (this.world != world) {
             this.shutdownRenderer();
         }
+        if (world!=null&&world.getRegistryKey()==World.OVERWORLD) {
+            this.overworldIdentifier = WorldIdentifier.of(world);
+        }
     }
 
     @Inject(method = "close", at = @At("HEAD"))
@@ -63,6 +74,10 @@ public abstract class MixinWorldRenderer implements IGetVoxyRenderSystem {
         if (this.renderer != null) {
             this.renderer.shutdown();
             this.renderer = null;
+        }
+        if (this.overworldRenderer != null) {
+            this.overworldRenderer.shutdown();
+            this.overworldRenderer = null;
         }
     }
 
@@ -88,5 +103,11 @@ public abstract class MixinWorldRenderer implements IGetVoxyRenderSystem {
             return;
         }
         this.renderer = new VoxyRenderSystem(world, instance.getThreadPool());
+        if (this.world.getRegistryKey()== World.NETHER && this.overworldIdentifier != null) {
+            var engine = this.overworldIdentifier.getOrCreateEngine();
+            if (engine != null) {
+                this.overworldRenderer = new VoxyRenderSystem(engine, instance.getThreadPool(), 1L<<31);
+            }
+        }
     }
 }

@@ -62,11 +62,12 @@ public class RenderService<T extends AbstractSectionRenderer<J, Q>, J extends Vi
     }
 
     @SuppressWarnings("unchecked")
-    public RenderService(WorldEngine world, ServiceThreadPool serviceThreadPool) {
+    public RenderService(WorldEngine world, ServiceThreadPool serviceThreadPool, long maxGeometryCapacity) {
         this.world = world;
         this.modelService = new ModelBakerySubsystem(world.getMapper());
 
         long geometryCapacity = getGeometryBufferSize();
+        geometryCapacity = Math.min(maxGeometryCapacity, geometryCapacity);
 
         this.geometryData = (Q) new BasicSectionGeometryData(1<<20, geometryCapacity);
 

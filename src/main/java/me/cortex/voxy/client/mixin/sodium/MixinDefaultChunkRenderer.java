@@ -26,6 +26,13 @@ public class MixinDefaultChunkRenderer {
             if (renderer != null) {
                 renderer.renderOpaque(matrices, camera.x, camera.y, camera.z);
             }
+
+            var overworldRenderer = ((IGetVoxyRenderSystem) MinecraftClient.getInstance().worldRenderer).getVoxyOverworldRenderSystem();
+            if (overworldRenderer != null) {
+                overworldRenderer.renderOpaque(new ChunkRenderMatrices(matrices.projection(),
+                                new Matrix4f(matrices.modelView()).scale(1/8f).scale(1,-1,1)),
+                        camera.x*8, (300-camera.y)*8, (camera.z)*8);
+            }
         }
     }
 }
