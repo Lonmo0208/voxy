@@ -43,7 +43,7 @@ public abstract class MixinWorldRenderer implements IGetVoxyRenderSystem {
 
     @Override
     public VoxyRenderSystem getVoxyOverworldRenderSystem() {
-        return this.renderer;
+        return this.overworldRenderer;
     }
 
     @Inject(method = "reload()V", at = @At("RETURN"), order = 900)//We want to inject before sodium
