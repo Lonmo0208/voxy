@@ -3,6 +3,8 @@
   "package": "me.cortex.voxy.client.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "flashback.MixinFlashbackMeta",
+    "flashback.MixinFlashbackRecorder",
     "minecraft.MixinClientChunkManager",
     "minecraft.MixinClientCommonNetworkHandler",
     "minecraft.MixinClientLoginNetworkHandler",
@@ -20,7 +22,5 @@
   ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "mixins": [
-  ]
+  }
 }
