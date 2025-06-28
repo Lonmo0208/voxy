@@ -28,15 +28,16 @@ public class VoxyClientInstance extends VoxyInstance {
 
     private final SectionStorageConfig storageConfig;
     private final Path basePath;
+    private final boolean noIngestOverride;
     public VoxyClientInstance() {
         super(VoxyConfig.CONFIG.serviceThreads);
         var path = FlashbackCompat.getReplayStoragePath();
-        boolean isReadonly = path != null;
+        this.noIngestOverride = path != null;
         if (path == null) {
             path = getBasePath();
         }
         this.basePath = path;
-        this.storageConfig = getCreateStorageConfig(path, isReadonly);
+        this.storageConfig = getCreateStorageConfig(path);
     }
 
     @Override
@@ -75,11 +76,7 @@ public class VoxyClientInstance extends VoxyInstance {
         }
     }
 
-    public static SectionStorageConfig getCreateStorageConfig(Path path, boolean asReadOnly) {
-        if (asReadOnly) {
-            Logger.error("Readonly SectionStorageConfig not yet implmented");
-        }
-
+    public static SectionStorageConfig getCreateStorageConfig(Path path) {
         try {
             Files.createDirectories(path);
         } catch (Exception e) {
@@ -171,5 +168,10 @@ public class VoxyClientInstance extends VoxyInstance {
             }
         }
         return basePath.toAbsolutePath();
+    }
+
+    @Override
+    public boolean isIngestEnabled(WorldIdentifier worldId) {
+        return !this.noIngestOverride;
     }
 }
