@@ -31,12 +31,12 @@ public abstract class MixinDefaultChunkRenderer extends ShaderChunkRenderer {
 
     @Inject(method = "render", at = @At(value = "HEAD"), cancellable = true)
     private void cancelThingie(ChunkRenderMatrices matrices, CommandList commandList, ChunkRenderListIterable renderLists, TerrainRenderPass renderPass, CameraTransform camera, CallbackInfo ci) {
-        // if (VoxyClient.disableSodiumChunkRender()) {
-        //     super.begin(renderPass);
-        //     this.doRender(matrices, renderPass, camera);
-        //     super.end(renderPass);
-        //     ci.cancel();
-        // }
+        if (VoxyClient.disableSodiumChunkRender()) {
+            super.begin(renderPass);
+            this.doRender(matrices, renderPass, camera);
+            super.end(renderPass);
+            ci.cancel();
+        }
     }
 
     @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/ShaderChunkRenderer;end(Lnet/caffeinemc/mods/sodium/client/render/chunk/terrain/TerrainRenderPass;)V", shift = At.Shift.BEFORE))
