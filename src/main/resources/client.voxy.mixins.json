@@ -18,7 +18,7 @@
     "iris.MixinStandardMacros",
     "minecraft.MixinClientLevel",
     "minecraft.MixinClientChunkCache",
-    "minecraft.MixinClientCommonPacketListenerImpl",
+    // "minecraft.MixinClientCommonPacketListenerImpl",
     "minecraft.MixinClientPacketListener",
     "minecraft.MixinFogRenderer",
     // "minecraft.MixinGlDebug",

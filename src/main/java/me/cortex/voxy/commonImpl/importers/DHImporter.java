@@ -207,9 +207,9 @@ public class DHImporter implements IDataImporter {
             if (idx == -1)
                 throw new IllegalStateException();
             {
-                var biomeRes = ResourceLocation.parse(encEntry.substring(0, idx));
-                var biome = this.biomeRegistry.getHolder(biomeRes).orElse(this.defaultBiome);
-                biomeId = this.engine.getMapper().getIdForBiome(biome);
+                var biomeRes = ResourceLocation.tryParse(encEntry.substring(0, idx));
+                var biome = this.biomeRegistry.getOptional(biomeRes).orElse(this.defaultBiome.value());
+                biomeId = this.engine.getMapper().getIdForBiome(this.biomeRegistry.wrapAsHolder(biome));
             }
             {
                 int b = idx + BLOCK_STATE_SEPARATOR_STRING.length();
@@ -221,7 +221,7 @@ public class DHImporter implements IDataImporter {
                     if (sIdx != -1) {
                         bStateStr = encEntry.substring(sIdx + STATE_STRING_SEPARATOR.length());
                     }
-                    var bId = ResourceLocation.parse(encEntry.substring(b, sIdx != -1 ? sIdx : encEntry.length()));
+                    var bId = ResourceLocation.tryParse(encEntry.substring(b, sIdx != -1 ? sIdx : encEntry.length()));
                     var maybeBlock = this.blockRegistry.getOptional(bId);
                     Block block = Blocks.AIR;
                     if (maybeBlock.isPresent()) {
