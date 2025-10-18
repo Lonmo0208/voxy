@@ -19,8 +19,6 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ChunkSectionPos;
 import net.minecraft.world.LightType;
 import net.minecraft.world.chunk.ChunkStatus;
-
-import org.apache.commons.compress.harmony.pack200.NewAttributeBands.Call;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -62,16 +60,19 @@ public class MixinRenderSectionManager {
         }
     }
 
-    /*
+
     @Inject(method = "onChunkAdded", at = @At("HEAD"))
-    private void voxy$trackChunkAdd(int x, int z, CallbackInfo ci) {
-        if (this.level.worldRenderer != null) {
-            var system = ((IGetVoxyRenderSystem)(this.level.worldRenderer)).getVoxyRenderSystem();
-            if (system != null) {
-                system.chunkBoundRenderer.addChunk(ChunkPos.toLong(x, z));
+    private void voxy$ingestOnAdd(int x, int z, CallbackInfo ci) {
+        if (this.level.worldRenderer != null && VoxyConfig.CONFIG.ingestEnabled) {
+            var cccm = this.level.getChunkManager();
+            if (cccm != null) {
+                var chunk = cccm.getChunk(x, z, ChunkStatus.FULL, false);
+                if (chunk != null) {
+                    VoxelIngestService.tryAutoIngestChunk(chunk);
+                }
             }
         }
-    }*/
+    }
 
     /*
     @Inject(method = "onChunkRemoved", at = @At("HEAD"))
