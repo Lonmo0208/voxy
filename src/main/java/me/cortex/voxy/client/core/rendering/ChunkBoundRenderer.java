@@ -90,7 +90,7 @@ public class ChunkBoundRenderer {
         long ptr = UploadStream.INSTANCE.upload(this.uniformBuffer, 0, 128);
         long matPtr = ptr; ptr += 4*4*4;
 
-        final float renderDistance = Minecraft.getInstance().options.getEffectiveRenderDistance()*16;//In blocks
+        final float renderDistance = (MinecraftClient.getInstance().options.getClampedViewDistance() - 2)*16;//In blocks
 
         {//This is recomputed to be in chunk section space not worldsection
             int sx = (int)(viewport.cameraX);
