@@ -48,9 +48,9 @@ public class MixinSharedApi {
         // }
 
         if (VoxelIngestService.tryAutoIngestChunk(wc)) {
-            Logger.info("DH MixinSharedApi: Auto-ingest triggered for chunk: " + chunkWrapper.getChunkPos());
+            // Logger.info("DH MixinSharedApi: Auto-ingest triggered for chunk: " + chunkWrapper.getChunkPos());
         } else {
-            Logger.info("DH MixinSharedApi: Auto-ingest NOT triggered for chunk: " + chunkWrapper.getChunkPos());
+            // Logger.info("DH MixinSharedApi: Auto-ingest NOT triggered for chunk: " + chunkWrapper.getChunkPos());
         }
         // ci.cancel();
     }
