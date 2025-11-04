@@ -14,10 +14,8 @@ import com.seibel.distanthorizons.core.wrapperInterfaces.chunk.IChunkWrapper;
 import loaderCommon.fabric.com.seibel.distanthorizons.common.wrappers.chunk.ChunkWrapper;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.world.service.VoxelIngestService;
-import me.cortex.voxy.commonImpl.WorldIdentifier;
-import net.minecraft.client.MinecraftClient;
 // import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.chunk.WorldChunk;
+import net.minecraft.world.level.chunk.LevelChunk;
 
 @Mixin(value = SharedApi.class, remap = false)
 public class MixinSharedApi {
@@ -39,10 +37,10 @@ public class MixinSharedApi {
             throw new IllegalArgumentException("DH MixinSharedApi: chunkWrapper is not a ChunkWrapper!");
             // return;
         }
-        if (!(cw.getChunk() instanceof WorldChunk wc)) {
-            Logger.error("DH MixinSharedApi: chunkWrapper.getChunk() is not a WorldChunk!");
+        if (!(cw.getChunk() instanceof LevelChunk wc)) {
+            Logger.error("DH MixinSharedApi: chunkWrapper.getChunk() is not a LevelChunk!");
             // return;
-            throw new IllegalArgumentException("DH MixinSharedApi: chunkWrapper.getChunk() is not a WorldChunk!");
+            throw new IllegalArgumentException("DH MixinSharedApi: chunkWrapper.getChunk() is not a LevelChunk!");
         }
 
         // for (int x = 0; x < 16; x++) {

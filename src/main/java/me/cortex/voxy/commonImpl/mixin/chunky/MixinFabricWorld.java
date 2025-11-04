@@ -39,7 +39,6 @@ public class MixinFabricWorld {
         return future.thenApply(res -> {
             res.ifLeft(chunk -> {
                 if (chunk instanceof LevelChunk worldChunk) {
-                    System.out.println("Submitting chunk for voxel ingestion: " + worldChunk.getPos());
                     VoxelIngestService.tryAutoIngestChunk(worldChunk);
                 }
             });
