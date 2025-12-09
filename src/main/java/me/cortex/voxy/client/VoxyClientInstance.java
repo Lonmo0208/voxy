@@ -1,6 +1,5 @@
 package me.cortex.voxy.client;
 
-import me.cortex.voxy.client.compat.FlashbackCompat;
 import me.cortex.voxy.client.config.VoxyConfig;
 import me.cortex.voxy.client.mixin.sodium.AccessorSodiumWorldRenderer;
 import me.cortex.voxy.common.Logger;
@@ -15,7 +14,7 @@ import me.cortex.voxy.common.config.storage.rocksdb.RocksDBStorageBackend;
 import me.cortex.voxy.commonImpl.ImportManager;
 import me.cortex.voxy.commonImpl.VoxyInstance;
 import me.cortex.voxy.commonImpl.WorldIdentifier;
-import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
+import me.jellysquid.mods.sodium.client.render.SodiumWorldRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.storage.LevelResource;
 import java.nio.file.Files;
@@ -29,11 +28,8 @@ public class VoxyClientInstance extends VoxyInstance {
     private final boolean noIngestOverride;
     public VoxyClientInstance() {
         super();
-        var path = FlashbackCompat.getReplayStoragePath();
-        this.noIngestOverride = path != null;
-        if (path == null) {
-            path = getBasePath();
-        }
+        var path = getBasePath();
+        this.noIngestOverride = false;
         this.basePath = path;
         this.storageConfig = getCreateStorageConfig(path);
         this.updateDedicatedThreads();
@@ -157,7 +153,7 @@ public class VoxyClientInstance extends VoxyInstance {
                     Logger.error("Server info null");
                     basePath = basePath.resolve("UNKNOWN");
                 } else {
-                    if (info.isRealm()) {
+                    if (Minecraft.getInstance().isConnectedToRealms()) {
                         basePath = basePath.resolve("realms");
                     } else {
                         basePath = basePath.resolve(info.ip.replace(":", "_"));

@@ -4,9 +4,8 @@ import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import me.cortex.voxy.common.Logger;
-import me.cortex.voxy.common.util.cpu.CpuLayout;
 import me.cortex.voxy.commonImpl.VoxyCommon;
-import net.caffeinemc.mods.sodium.client.gui.options.storage.OptionStorage;
+import me.jellysquid.mods.sodium.client.gui.options.storage.OptionStorage;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.FileReader;
@@ -28,7 +27,7 @@ public class VoxyConfig implements OptionStorage<VoxyConfig> {
     public boolean enableRendering = true;
     public boolean ingestEnabled = true;
     public int sectionRenderDistance = 16;
-    public int serviceThreads = (int) Math.max(CpuLayout.getCoreCount()/1.5, 1);
+    public int serviceThreads = (int) Math.max(Runtime.getRuntime().availableProcessors() * 2 / 1.5, 1);
     public float subDivisionSize = 64;
     public boolean renderVanillaFog = false;
     public boolean renderStatistics = false;
@@ -54,10 +53,8 @@ public class VoxyConfig implements OptionStorage<VoxyConfig> {
             config.save();
             return config;
         } else {
-            var config = new VoxyConfig();
-            config.enabled = false;
-            config.enableRendering = false;
-            return config;
+            VoxyCommon.createInstance();
+            return loadOrCreate();
         }
     }
 

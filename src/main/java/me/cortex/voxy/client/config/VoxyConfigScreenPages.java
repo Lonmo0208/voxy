@@ -5,14 +5,14 @@ import me.cortex.voxy.client.RenderStatistics;
 import me.cortex.voxy.client.VoxyClientInstance;
 import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
 import me.cortex.voxy.client.mixin.sodium.AccessorSodiumWorldRenderer;
-import me.cortex.voxy.common.util.cpu.CpuLayout;
 import me.cortex.voxy.commonImpl.VoxyCommon;
-import net.caffeinemc.mods.sodium.client.gui.options.*;
-import net.caffeinemc.mods.sodium.client.gui.options.control.SliderControl;
-import net.caffeinemc.mods.sodium.client.gui.options.control.TickBoxControl;
-import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
+import me.jellysquid.mods.sodium.client.gui.options.*;
+import me.jellysquid.mods.sodium.client.gui.options.control.SliderControl;
+import me.jellysquid.mods.sodium.client.gui.options.control.TickBoxControl;
+import me.jellysquid.mods.sodium.client.render.SodiumWorldRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -59,8 +59,8 @@ public abstract class VoxyConfigScreenPages {
                         .setName(Component.translatable("voxy.config.general.serviceThreads"))
                         .setTooltip(Component.translatable("voxy.config.general.serviceThreads.tooltip"))
                         .setControl(opt->new SliderControl(opt, 1,
-                                CpuLayout.CORES.length, //Just do core size as max
-                                //Runtime.getRuntime().availableProcessors(),//Note: this is threads not cores, the default value is half the core count, is fine as this should technically be the limit but CpuLayout.CORES.length is more realistic
+                                // CpuLayout.CORES.length, //Just do core size as max
+                                Runtime.getRuntime().availableProcessors() * 2,//Note: this is threads not cores, the default value is half the core count, is fine as this should technically be the limit but CpuLayout.CORES.length is more realistic
                                 1, v->Component.literal(Integer.toString(v))))
                         .setBinding((s, v)->{
                             s.serviceThreads = v;

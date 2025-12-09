@@ -3,7 +3,6 @@ package me.cortex.voxy.client.core.rendering.section.geometry;
 import me.cortex.voxy.client.core.gl.Capabilities;
 import me.cortex.voxy.client.core.gl.GlBuffer;
 import me.cortex.voxy.common.Logger;
-import me.cortex.voxy.common.util.ThreadUtils;
 
 import static org.lwjgl.opengl.ARBSparseBuffer.*;
 import static org.lwjgl.opengl.GL11C.*;

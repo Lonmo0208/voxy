@@ -251,7 +251,7 @@ public class ModelFactory {
         var biomeEntry = this.biomeQueue.poll();
         while (biomeEntry != null) {
             var biomeRegistry = Minecraft.getInstance().level.registryAccess().registryOrThrow(Registries.BIOME);
-            var res = this.addBiome0(biomeEntry.id, biomeRegistry.getOptional(ResourceLocation.parse(biomeEntry.biome)).orElseThrow());
+            var res = this.addBiome0(biomeEntry.id, biomeRegistry.getOptional(ResourceLocation.tryParse(biomeEntry.biome)).orElseThrow());
             if (res != null) {
                 this.uploadResults.add(res);
             }

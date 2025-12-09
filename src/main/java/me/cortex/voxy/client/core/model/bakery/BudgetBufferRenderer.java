@@ -1,7 +1,7 @@
 package me.cortex.voxy.client.core.model.bakery;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.MeshData;
+import com.mojang.blaze3d.vertex.BufferBuilder.RenderedBuffer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import me.cortex.voxy.client.core.gl.GlBuffer;
 import me.cortex.voxy.client.core.gl.GlVertexArray;
@@ -54,7 +54,7 @@ public class BudgetBufferRenderer {
 
     private static GlBuffer immediateBuffer;
     private static int quadCount;
-    public static void drawFast(MeshData buffer, AbstractTexture tex, Matrix4f matrix) {
+    public static void drawFast(RenderedBuffer buffer, AbstractTexture tex, Matrix4f matrix) {
         if (buffer.drawState().mode() != VertexFormat.Mode.QUADS) {
             throw new IllegalStateException("Fast only supports quads");
         }
@@ -66,7 +66,7 @@ public class BudgetBufferRenderer {
         if (size%4 != 0) throw new IllegalStateException();
         size /= 4;
         setup(MemoryUtil.memAddress(buff), size, tex.getId());
-        buffer.close();
+        buffer.release();
 
         render(matrix);
     }
