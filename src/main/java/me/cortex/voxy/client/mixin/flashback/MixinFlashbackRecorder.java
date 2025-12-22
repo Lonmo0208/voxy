@@ -18,7 +18,7 @@ public class MixinFlashbackRecorder {
     @Shadow @Final private FlashbackMeta metadata;
 
     @Inject(method = "<init>", at = @At("TAIL"))
-    private void voxy$getStoragePath(RegistryAccess registryAccess, CallbackInfo retInf) {
+    private void voxy$getStoragePath(CallbackInfo retInf) {
         if (VoxyCommon.isAvailable()) {
             var instance = VoxyCommon.getInstance();
             if (instance instanceof VoxyClientInstance ci) {
