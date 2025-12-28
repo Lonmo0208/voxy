@@ -39,6 +39,7 @@ public class NormalRenderPipeline extends AbstractRenderPipeline {
     private final GlFramebuffer fbSSAO = new GlFramebuffer();
     private final DepthFramebuffer fb = new DepthFramebuffer(GL_DEPTH24_STENCIL8);
 
+    private final boolean useEnvFog;
     private final FullscreenBlit finalBlit;
 
     private final Shader ssaoCompute = Shader.make()
@@ -47,6 +48,7 @@ public class NormalRenderPipeline extends AbstractRenderPipeline {
 
     protected NormalRenderPipeline(AsyncNodeManager nodeManager, NodeCleaner nodeCleaner, HierarchicalOcclusionTraverser traversal, BooleanSupplier frexSupplier) {
         super(nodeManager, nodeCleaner, traversal, frexSupplier);
+        this.useEnvFog = VoxyConfig.CONFIG.renderVanillaFog;
         this.finalBlit = new FullscreenBlit("voxy:post/blit_texture_depth_cutout.frag",
                 a->a.define("EMIT_COLOUR"));
     }

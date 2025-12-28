@@ -16,13 +16,11 @@
     "iris.MixinProgramSet",
     "iris.MixinShaderPackSourceNames",
     "iris.MixinStandardMacros",
-    // "minecraft.MixinBlockableEventLoop",
     "minecraft.MixinClientChunkCache",
     "minecraft.MixinClientCommonPacketListenerImpl",
     "minecraft.MixinClientLevel",
     "minecraft.MixinClientPacketListener",
     "minecraft.MixinFogRenderer",
-    // "minecraft.MixinGlDebug",
     "minecraft.MixinLevelRenderer",
     "minecraft.MixinMinecraft",
     "minecraft.MixinRenderSystem",
@@ -35,6 +33,7 @@
     "sodium.MixinRenderSectionManager",
     "sodium.MixinSodiumOptionsGUI",
     "sodium.MixinSodiumWorldRenderer",
+    "sodium.MixinShaderLoader",
     "minecraft.MixinLayerLightSectionStorage"
   ],
   "injectors": {

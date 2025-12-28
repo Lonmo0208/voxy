@@ -30,6 +30,7 @@ public class MixinFogRenderer {
         float tickDelta,
         CallbackInfo ci
     ) {
+        if (!(VoxyConfig.CONFIG.enableRendering&&VoxyConfig.CONFIG.enabled)) return;
         var vrs = (IGetVoxyRenderSystem) Minecraft.getInstance().levelRenderer;
 
         if (VoxyConfig.CONFIG.renderVanillaFog || vrs == null || vrs.getVoxyRenderSystem() == null) {
