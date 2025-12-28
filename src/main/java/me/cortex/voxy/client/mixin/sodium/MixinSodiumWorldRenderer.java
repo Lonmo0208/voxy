@@ -27,14 +27,32 @@ public class MixinSodiumWorldRenderer {
         if (vi != null) vi.updateDedicatedThreads();
     }
 
-    @Inject(method = "drawChunkLayer", at = @At("TAIL"))
-    private void injectRender(RenderType renderLayer, PoseStack matrixStack, double x, double y, double z, CallbackInfo ci) {
-        this.doRender(ChunkRenderMatrices.from(matrixStack), renderLayer, x, y, z);
+    @Unique
+    private ChunkRenderMatrices voxy$capturedMatrices;
+
+    @Inject(
+        method = "drawChunkLayer(Lnet/minecraft/client/renderer/RenderType;Lcom/mojang/blaze3d/vertex/PoseStack;DDD)V",
+        at = @At("HEAD")
+    )
+    private void voxy$captureMatrices(
+            RenderType renderLayer,
+            PoseStack matrixStack,
+            double x,
+            double y,
+            double z,
+            CallbackInfo ci
+    ) {
+        this.voxy$capturedMatrices = ChunkRenderMatrices.from(matrixStack);
     }
 
+    @Inject(method = "drawChunkLayer(Lnet/minecraft/client/renderer/RenderType;Lcom/mojang/blaze3d/vertex/PoseStack;DDD)V", at = @At("TAIL"))
+    private void injectRender(RenderType renderLayer, PoseStack matrixStack, double x, double y, double z, CallbackInfo ci) {
+        this.doRender(this.voxy$capturedMatrices, renderLayer, x, y, z);
+    }
+    
     @Unique
     private void doRender(ChunkRenderMatrices matrices, RenderType renderLayer, double x, double y, double z) {
-        if (renderLayer == RenderType.cutout()) {
+        if (renderLayer == RenderType.solid()) {
             var renderer = ((IGetVoxyRenderSystem) Minecraft.getInstance().levelRenderer).getVoxyRenderSystem();
             if (renderer != null) {
                 Viewport<?> viewport = null;
