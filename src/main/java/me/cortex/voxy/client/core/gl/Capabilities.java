@@ -19,12 +19,12 @@ import static org.lwjgl.opengl.GL15.glDeleteBuffers;
 import static org.lwjgl.opengl.GL30.GL_DEPTH_STENCIL;
 import static org.lwjgl.opengl.GL30C.GL_MAP_READ_BIT;
 import static org.lwjgl.opengl.GL32.glGetInteger64;
-import static org.lwjgl.opengl.GL43C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE;
-import static org.lwjgl.opengl.GL44.GL_DYNAMIC_STORAGE_BIT;
-import static org.lwjgl.opengl.GL44.GL_MAP_COHERENT_BIT;
-import static org.lwjgl.opengl.GL45.glClearNamedFramebufferfi;
-import static org.lwjgl.opengl.GL45C.*;
-import static org.lwjgl.opengl.GL45C.glCreateFramebuffers;
+import static org.lwjgl.opengl.GL46C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE;
+import static org.lwjgl.opengl.GL46.GL_DYNAMIC_STORAGE_BIT;
+import static org.lwjgl.opengl.GL46.GL_MAP_COHERENT_BIT;
+import static org.lwjgl.opengl.GL46.glClearNamedFramebufferfi;
+import static org.lwjgl.opengl.GL46C.*;
+import static org.lwjgl.opengl.GL46C.glCreateFramebuffers;
 import static org.lwjgl.opengl.NVXGPUMemoryInfo.*;
 
 public class Capabilities {

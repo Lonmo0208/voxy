@@ -14,8 +14,8 @@ import static org.lwjgl.opengl.GL11.GL_UNSIGNED_INT;
 import static org.lwjgl.opengl.GL30.GL_R32UI;
 import static org.lwjgl.opengl.GL30.glBindBufferBase;
 import static org.lwjgl.opengl.GL30C.GL_RED_INTEGER;
-import static org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER;
-import static org.lwjgl.opengl.GL45.nglClearNamedBufferSubData;
+import static org.lwjgl.opengl.GL46.GL_SHADER_STORAGE_BUFFER;
+import static org.lwjgl.opengl.GL46.nglClearNamedBufferSubData;
 
 public class PrintfInjector implements IShaderProcessor {
     private final GlBuffer textBuffer;

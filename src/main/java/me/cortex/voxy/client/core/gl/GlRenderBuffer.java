@@ -2,7 +2,7 @@ package me.cortex.voxy.client.core.gl;
 
 import me.cortex.voxy.common.util.TrackedObject;
 
-import static org.lwjgl.opengl.GL45C.*;
+import static org.lwjgl.opengl.GL46C.*;
 
 public class GlRenderBuffer extends TrackedObject {
     public final int id;

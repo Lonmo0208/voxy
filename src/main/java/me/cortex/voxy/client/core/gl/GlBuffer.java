@@ -7,7 +7,7 @@ import org.lwjgl.system.MemoryUtil;
 import static org.lwjgl.opengl.ARBSparseBuffer.GL_SPARSE_STORAGE_BIT_ARB;
 import static org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE;
 import static org.lwjgl.opengl.GL15.glDeleteBuffers;
-import static org.lwjgl.opengl.GL45C.*;
+import static org.lwjgl.opengl.GL46C.*;
 
 public class GlBuffer extends TrackedObject {
     public final int id;

@@ -5,7 +5,7 @@ import me.cortex.voxy.common.util.TrackedObject;
 import static org.lwjgl.opengl.GL11.GL_RGBA8;
 import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.opengl.GL30.GL_DEPTH24_STENCIL8;
-import static org.lwjgl.opengl.GL45C.*;
+import static org.lwjgl.opengl.GL46C.*;
 
 public class GlTexture extends TrackedObject {
     public final int id;

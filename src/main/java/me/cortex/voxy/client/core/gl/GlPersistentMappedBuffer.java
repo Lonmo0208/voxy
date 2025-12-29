@@ -4,7 +4,7 @@ import me.cortex.voxy.common.util.TrackedObject;
 
 import static org.lwjgl.opengl.ARBMapBufferRange.GL_MAP_WRITE_BIT;
 import static org.lwjgl.opengl.GL15.glDeleteBuffers;
-import static org.lwjgl.opengl.GL45C.*;
+import static org.lwjgl.opengl.GL46C.*;
 
 public class GlPersistentMappedBuffer extends TrackedObject {
     public final int id;

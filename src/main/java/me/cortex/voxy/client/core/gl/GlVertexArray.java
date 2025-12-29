@@ -5,7 +5,7 @@ import me.cortex.voxy.common.util.TrackedObject;
 import java.util.Arrays;
 
 import static org.lwjgl.opengl.GL30.glGenVertexArrays;
-import static org.lwjgl.opengl.GL45C.*;
+import static org.lwjgl.opengl.GL46C.*;
 
 public class GlVertexArray extends TrackedObject {
     public static final int STATIC_VAO = glGenVertexArrays();

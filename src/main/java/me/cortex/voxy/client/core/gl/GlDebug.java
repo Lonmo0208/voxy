@@ -2,7 +2,7 @@ package me.cortex.voxy.client.core.gl;
 
 import me.cortex.voxy.client.core.gl.shader.Shader;
 
-import static org.lwjgl.opengl.GL43C.*;
+import static org.lwjgl.opengl.GL46C.*;
 
 public class GlDebug {
     public static final boolean GL_DEBUG = System.getProperty("voxy.glDebug", "false").equals("true");
