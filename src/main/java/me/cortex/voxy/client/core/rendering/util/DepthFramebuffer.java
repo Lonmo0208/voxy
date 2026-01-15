@@ -9,8 +9,6 @@ import static org.lwjgl.opengl.GL11C.GL_DEPTH;
 import static org.lwjgl.opengl.GL14.GL_DEPTH_COMPONENT24;
 import static org.lwjgl.opengl.GL30C.*;
 import static org.lwjgl.opengl.GL45C.GL_NONE;
-import static org.lwjgl.opengl.GL45C.glNamedFramebufferDrawBuffer;
-import static org.lwjgl.opengl.GL45C.glNamedFramebufferReadBuffer;
 
 public class DepthFramebuffer {
     private final int depthType;
@@ -31,16 +29,7 @@ public class DepthFramebuffer {
                 this.depthBuffer.free();
             }
             this.depthBuffer = new GlTexture().store(this.depthType, 1, width, height);
-
-            this.framebuffer.bind(
-                    this.depthType == GL_DEPTH24_STENCIL8 ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT,
-                    this.depthBuffer
-            );
-
-            glNamedFramebufferDrawBuffer(this.framebuffer.id, GL_NONE);
-            glNamedFramebufferReadBuffer(this.framebuffer.id, GL_NONE);
-
-            this.framebuffer.verify();
+            this.framebuffer.bind(this.depthType == GL_DEPTH24_STENCIL8?GL_DEPTH_STENCIL_ATTACHMENT: GL_DEPTH_ATTACHMENT, this.depthBuffer).verify();
             return true;
         }
         return false;

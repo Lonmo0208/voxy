@@ -30,6 +30,11 @@ public class GlFramebuffer extends TrackedObject {
         return this;
     }
 
+    public GlFramebuffer setReadBuffer(int buffer) {
+        glNamedFramebufferReadBuffer(this.id, buffer);
+        return this;
+    }
+
     @Override
     public void free() {
         super.free0();

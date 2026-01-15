@@ -102,16 +102,31 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
 
     @Override
     protected int setup(Viewport<?> viewport, int sourceFramebuffer, int srcWidth, int srcHeight) {
-
         this.fb.resize(viewport.width, viewport.height);
+
+        var oDT = this.data.opaqueDrawTargets;
+        int[] binding = new int[oDT.length];
+        for (int i = 0; i < oDT.length; i++) {
+            binding[i] = GL30.GL_COLOR_ATTACHMENT0 + i;
+            glNamedFramebufferTexture(this.fb.framebuffer.id, GL30.GL_COLOR_ATTACHMENT0 + i, oDT[i], 0);
+        }
+        if (oDT.length > 0) {
+            glNamedFramebufferDrawBuffers(this.fb.framebuffer.id, binding);
+        }
+        this.fb.framebuffer.verify();
+
         this.fbTranslucent.resize(viewport.width, viewport.height);
 
-        if (false) {//TODO: only do this if shader specifies
-            //Clear the colour component
-            glBindFramebuffer(GL_FRAMEBUFFER, this.fb.framebuffer.id);
-            glClearColor(0, 0, 0, 0);
-            glClear(GL_COLOR_BUFFER_BIT);
+        var tDT = this.data.translucentDrawTargets;
+        binding = new int[tDT.length];
+        for (int i = 0; i < tDT.length; i++) {
+            binding[i] = GL30.GL_COLOR_ATTACHMENT0 + i;
+            glNamedFramebufferTexture(this.fbTranslucent.framebuffer.id, GL30.GL_COLOR_ATTACHMENT0 + i, tDT[i], 0);
         }
+        if (tDT.length > 0) {
+            glNamedFramebufferDrawBuffers(this.fbTranslucent.framebuffer.id, binding);
+        }
+        this.fbTranslucent.framebuffer.verify();
 
         if (!this.data.useViewportDims) {
             srcWidth = viewport.width;
