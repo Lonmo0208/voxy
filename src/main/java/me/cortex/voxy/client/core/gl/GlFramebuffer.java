@@ -3,10 +3,12 @@ package me.cortex.voxy.client.core.gl;
 import me.cortex.voxy.common.util.TrackedObject;
 
 import static org.lwjgl.opengl.GL45C.*;
-import static org.lwjgl.opengl.GL45C.glNamedFramebufferDrawBuffers;
 
 public class GlFramebuffer extends TrackedObject {
     public final int id;
+
+    private boolean isVerified = false;
+
     public GlFramebuffer() {
         this.id = glCreateFramebuffers();
     }
@@ -16,22 +18,21 @@ public class GlFramebuffer extends TrackedObject {
     }
 
     public GlFramebuffer bind(int attachment, GlTexture texture, int lvl) {
-        glNamedFramebufferTexture(this.id, attachment, texture.id, lvl);
+        if (texture != null && texture.id != 0) {
+            glNamedFramebufferTexture(this.id, attachment, texture.id, lvl);
+            isVerified = false;
+        }
         return this;
     }
 
     public GlFramebuffer bind(int attachment, GlRenderBuffer buffer) {
         glNamedFramebufferRenderbuffer(this.id, attachment, GL_RENDERBUFFER, buffer.id);
+        isVerified = false;
         return this;
     }
 
     public GlFramebuffer setDrawBuffers(int... buffers) {
         glNamedFramebufferDrawBuffers(this.id, buffers);
-        return this;
-    }
-
-    public GlFramebuffer setReadBuffer(int buffer) {
-        glNamedFramebufferReadBuffer(this.id, buffer);
         return this;
     }
 
@@ -42,26 +43,36 @@ public class GlFramebuffer extends TrackedObject {
     }
 
     public GlFramebuffer verify() {
-        int code;
-        if ((code = glCheckNamedFramebufferStatus(this.id, GL_FRAMEBUFFER)) != GL_FRAMEBUFFER_COMPLETE) {
-            String errorMsg = switch(code) {
-                case GL_FRAMEBUFFER_UNDEFINED -> "GL_FRAMEBUFFER_UNDEFINED";
-                case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT -> "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
-                case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT -> "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
-                case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER -> "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER";
-                case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER -> "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER";
-                case GL_FRAMEBUFFER_UNSUPPORTED -> "GL_FRAMEBUFFER_UNSUPPORTED";
-                case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE -> "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
-                case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS -> "GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS";
-                default -> "Unknown error code: " + code;
-            };
-            throw new IllegalStateException("Framebuffer incomplete: " + errorMsg);
+        if (!isVerified) {
+            int code;
+            if ((code = glCheckNamedFramebufferStatus(this.id, GL_FRAMEBUFFER)) != GL_FRAMEBUFFER_COMPLETE) {
+                String errorMessage = getFramebufferErrorDescription(code);
+                throw new IllegalStateException("Framebuffer incomplete: " + errorMessage + " (code: " + code + ")");
+            }
+            isVerified = true;
         }
         return this;
     }
 
+    private String getFramebufferErrorDescription(int errorCode) {
+        return switch (errorCode) {
+            case GL_FRAMEBUFFER_UNDEFINED -> "Framebuffer undefined";
+            case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT -> "Incomplete attachment";
+            case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT -> "Missing attachment";
+            case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER -> "Incomplete draw buffer";
+            case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER -> "Incomplete read buffer";
+            case GL_FRAMEBUFFER_UNSUPPORTED -> "Unsupported format combination";
+            case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE -> "Incomplete multisample";
+            case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS -> "Incomplete layer targets";
+            default -> "Unknown error";
+        };
+    }
 
     public GlFramebuffer name(String name) {
         return GlDebug.name(name, this);
+    }
+
+    public void markAsVerified() {
+        isVerified = true;
     }
 }

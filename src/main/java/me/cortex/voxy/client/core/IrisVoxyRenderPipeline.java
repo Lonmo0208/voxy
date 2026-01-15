@@ -25,39 +25,33 @@ import static org.lwjgl.opengl.GL45C.*;
 
 public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
     private final IrisVoxyRenderPipelineData data;
-    private final FullscreenBlit depthBlit = new FullscreenBlit("voxy:post/blit_texture_depth_cutout.frag");
-    public final DepthFramebuffer fb = new DepthFramebuffer(GL_DEPTH24_STENCIL8);
-    public final DepthFramebuffer fbTranslucent = new DepthFramebuffer(GL_DEPTH24_STENCIL8);
+    private final FullscreenBlit depthBlit;
+
+    public final DepthFramebuffer fb;
+    public final DepthFramebuffer fbTranslucent;
 
     private final GlBuffer shaderUniforms;
 
-    public IrisVoxyRenderPipeline(IrisVoxyRenderPipelineData data, AsyncNodeManager nodeManager, NodeCleaner nodeCleaner, HierarchicalOcclusionTraverser traversal, BooleanSupplier frexSupplier) {
+    private int lastWidth = -1;
+    private int lastHeight = -1;
+    private int[] lastOpaqueDrawTargets = null;
+    private int[] lastTranslucentDrawTargets = null;
+
+    public IrisVoxyRenderPipeline(IrisVoxyRenderPipelineData data, AsyncNodeManager nodeManager,
+                                  NodeCleaner nodeCleaner, HierarchicalOcclusionTraverser traversal,
+                                  BooleanSupplier frexSupplier) {
         super(nodeManager, nodeCleaner, traversal, frexSupplier);
         this.data = data;
+
         if (this.data.thePipeline != null) {
             throw new IllegalStateException("Pipeline data already bound");
         }
         this.data.thePipeline = this;
 
-        //Bind the drawbuffers
-        var oDT = this.data.opaqueDrawTargets;
-        int[] binding = new int[oDT.length];
-        for (int i = 0; i < oDT.length; i++) {
-            binding[i] = GL30.GL_COLOR_ATTACHMENT0+i;
-            glNamedFramebufferTexture(this.fb.framebuffer.id, GL30.GL_COLOR_ATTACHMENT0+i, oDT[i], 0);
-        }
-        glNamedFramebufferDrawBuffers(this.fb.framebuffer.id, binding);
+        this.depthBlit = new FullscreenBlit("voxy:post/blit_texture_depth_cutout.frag");
 
-        var tDT = this.data.translucentDrawTargets;
-        binding = new int[tDT.length];
-        for (int i = 0; i < tDT.length; i++) {
-            binding[i] = GL30.GL_COLOR_ATTACHMENT0+i;
-            glNamedFramebufferTexture(this.fbTranslucent.framebuffer.id, GL30.GL_COLOR_ATTACHMENT0+i, tDT[i], 0);
-        }
-        glNamedFramebufferDrawBuffers(this.fbTranslucent.framebuffer.id, binding);
-
-        this.fb.framebuffer.verify();
-        this.fbTranslucent.framebuffer.verify();
+        this.fb = new DepthFramebuffer(GL_DEPTH24_STENCIL8);
+        this.fbTranslucent = new DepthFramebuffer(GL_DEPTH24_STENCIL8);
 
         if (data.getUniforms() != null) {
             this.shaderUniforms = new GlBuffer(data.getUniforms().size());
@@ -92,8 +86,8 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
     @Override
     public void preSetup(Viewport<?> viewport) {
         super.preSetup(viewport);
+
         if (this.shaderUniforms != null) {
-            //Update the uniforms
             long ptr = UploadStream.INSTANCE.uploadTo(this.shaderUniforms);
             this.data.getUniforms().updater().accept(ptr);
             UploadStream.INSTANCE.commit();
@@ -102,70 +96,116 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
 
     @Override
     protected int setup(Viewport<?> viewport, int sourceFramebuffer, int srcWidth, int srcHeight) {
-        this.fb.resize(viewport.width, viewport.height);
+        int viewportWidth = viewport.width;
+        int viewportHeight = viewport.height;
 
-        var oDT = this.data.opaqueDrawTargets;
-        int[] binding = new int[oDT.length];
-        for (int i = 0; i < oDT.length; i++) {
-            binding[i] = GL30.GL_COLOR_ATTACHMENT0 + i;
-            glNamedFramebufferTexture(this.fb.framebuffer.id, GL30.GL_COLOR_ATTACHMENT0 + i, oDT[i], 0);
-        }
-        if (oDT.length > 0) {
-            glNamedFramebufferDrawBuffers(this.fb.framebuffer.id, binding);
-        }
-        this.fb.framebuffer.verify();
+        boolean sizeChanged = (viewportWidth != lastWidth || viewportHeight != lastHeight);
+        boolean opaqueAttachmentsChanged = attachmentsChanged(this.data.opaqueDrawTargets, lastOpaqueDrawTargets);
+        boolean translucentAttachmentsChanged = attachmentsChanged(this.data.translucentDrawTargets, lastTranslucentDrawTargets);
 
-        this.fbTranslucent.resize(viewport.width, viewport.height);
+        if (sizeChanged || opaqueAttachmentsChanged) {
+            this.fb.resize(viewportWidth, viewportHeight);
 
-        var tDT = this.data.translucentDrawTargets;
-        binding = new int[tDT.length];
-        for (int i = 0; i < tDT.length; i++) {
-            binding[i] = GL30.GL_COLOR_ATTACHMENT0 + i;
-            glNamedFramebufferTexture(this.fbTranslucent.framebuffer.id, GL30.GL_COLOR_ATTACHMENT0 + i, tDT[i], 0);
+            attachColorAttachments(this.fb, this.data.opaqueDrawTargets);
+            this.fb.framebuffer.verify();
+
+            lastWidth = viewportWidth;
+            lastHeight = viewportHeight;
+            lastOpaqueDrawTargets = copyArray(this.data.opaqueDrawTargets);
         }
-        if (tDT.length > 0) {
-            glNamedFramebufferDrawBuffers(this.fbTranslucent.framebuffer.id, binding);
+
+        if (sizeChanged || translucentAttachmentsChanged) {
+            this.fbTranslucent.resize(viewportWidth, viewportHeight);
+
+            attachColorAttachments(this.fbTranslucent, this.data.translucentDrawTargets);
+            this.fbTranslucent.framebuffer.verify();
+
+            lastTranslucentDrawTargets = copyArray(this.data.translucentDrawTargets);
         }
-        this.fbTranslucent.framebuffer.verify();
 
         if (!this.data.useViewportDims) {
-            srcWidth = viewport.width;
-            srcHeight = viewport.height;
+            srcWidth = viewportWidth;
+            srcHeight = viewportHeight;
         }
-        this.initDepthStencil(sourceFramebuffer, this.fb.framebuffer.id, srcWidth, srcHeight, viewport.width, viewport.height);
+
+        this.initDepthStencil(sourceFramebuffer, this.fb.framebuffer.id,
+                srcWidth, srcHeight, viewportWidth, viewportHeight);
         return this.fb.getDepthTex().id;
+    }
+
+    private void attachColorAttachments(DepthFramebuffer framebuffer, int[] drawTargets) {
+        if (drawTargets == null || drawTargets.length == 0) {
+            glNamedFramebufferDrawBuffers(framebuffer.framebuffer.id, GL_NONE);
+            return;
+        }
+
+        int[] bindings = new int[drawTargets.length];
+        for (int i = 0; i < drawTargets.length; i++) {
+            bindings[i] = GL30.GL_COLOR_ATTACHMENT0 + i;
+            if (drawTargets[i] != 0) {
+                glNamedFramebufferTexture(framebuffer.framebuffer.id, bindings[i], drawTargets[i], 0);
+            }
+        }
+        glNamedFramebufferDrawBuffers(framebuffer.framebuffer.id, bindings);
+    }
+
+    private boolean attachmentsChanged(int[] current, int[] last) {
+        if (current == null && last == null) return false;
+        if (current == null || last == null) return true;
+        if (current.length != last.length) return true;
+
+        for (int i = 0; i < current.length; i++) {
+            if (current[i] != last[i]) return true;
+        }
+        return false;
+    }
+
+    private int[] copyArray(int[] source) {
+        if (source == null) return new int[0];;
+        int[] copy = new int[source.length];
+        System.arraycopy(source, 0, copy, 0, source.length);
+        return copy;
     }
 
     @Override
     protected void postOpaquePreTranslucent(Viewport<?> viewport) {
-        int msk = GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT;
-        if (true) {//TODO: make shader specified
-            if (false) {//TODO: only do this if shader specifies
-                glBindFramebuffer(GL_FRAMEBUFFER, this.fbTranslucent.framebuffer.id);
-                glClearColor(0, 0, 0, 0);
-                glClear(GL_COLOR_BUFFER_BIT);
-            }
+        int mask = GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT;
+
+        boolean copyColor = true;
+        if (!copyColor) {
+            mask |= GL_COLOR_BUFFER_BIT;
         } else {
-            msk |= GL_COLOR_BUFFER_BIT;
+            glBindFramebuffer(GL_FRAMEBUFFER, this.fbTranslucent.framebuffer.id);
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
         }
-        glBlitNamedFramebuffer(this.fb.framebuffer.id, this.fbTranslucent.framebuffer.id, 0,0, viewport.width, viewport.height, 0,0, viewport.width, viewport.height, msk, GL_NEAREST);
+
+        glBlitNamedFramebuffer(this.fb.framebuffer.id, this.fbTranslucent.framebuffer.id,
+                0, 0, viewport.width, viewport.height,
+                0, 0, viewport.width, viewport.height,
+                mask, GL_NEAREST);
     }
 
     @Override
     protected void finish(Viewport<?> viewport, int sourceFrameBuffer, int srcWidth, int srcHeight) {
-        if (this.data.renderToVanillaDepth && srcWidth == viewport.width  && srcHeight == viewport.height) {//We can only depthblit out if destination size is the same
+        boolean canDepthBlit = this.data.renderToVanillaDepth &&
+                srcWidth == viewport.width &&
+                srcHeight == viewport.height;
+
+        if (canDepthBlit) {
             glColorMask(false, false, false, false);
+
+            Matrix4f projectionMatrix = new Matrix4f(viewport.vanillaProjection).mul(viewport.modelView);
             AbstractRenderPipeline.transformBlitDepth(this.depthBlit,
                     this.fbTranslucent.getDepthTex().id, sourceFrameBuffer,
-                    viewport, new Matrix4f(viewport.vanillaProjection).mul(viewport.modelView));
+                    viewport, projectionMatrix);
+
             glColorMask(true, true, true, true);
         } else {
-            // normally disabled by AbstractRenderPipeline but since we are skipping it we do it here
             glDisable(GL_STENCIL_TEST);
             glDisable(GL_DEPTH_TEST);
         }
     }
-
 
     @Override
     public void bindUniforms() {
@@ -175,12 +215,13 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
     @Override
     public void bindUniforms(int bindingPoint) {
         if (this.shaderUniforms != null) {
-            GL30.glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, this.shaderUniforms.id);// todo: dont randomly select this to 5
+            GL30.glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, this.shaderUniforms.id);
         }
     }
 
     private void doBindings() {
         this.bindUniforms();
+
         if (this.data.getSsboSet() != null) {
             this.data.getSsboSet().bindingFunction().accept(10);
         }
@@ -188,6 +229,7 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
             this.data.getImageSet().bindingFunction().accept(6);
         }
     }
+
     @Override
     public void setupAndBindOpaque(Viewport<?> viewport) {
         this.fb.bind();
@@ -198,6 +240,7 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
     public void setupAndBindTranslucent(Viewport<?> viewport) {
         this.fbTranslucent.bind();
         this.doBindings();
+
         if (this.data.getBlender() != null) {
             this.data.getBlender().run();
         }
@@ -206,41 +249,41 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
     @Override
     public void addDebug(List<String> debug) {
         debug.add("Using: " + this.getClass().getSimpleName());
+        debug.add("Framebuffer Size: " + lastWidth + "x" + lastHeight);
         super.addDebug(debug);
     }
 
-    private static final int UNIFORM_BINDING_POINT = 5;//TODO make ths binding point... not randomly 5
+    private static final int UNIFORM_BINDING_POINT = 5;
+    private static final int SSBO_BINDING_BASE = 10;
+    private static final int IMAGE_BINDING_BASE = 6;
 
     private StringBuilder buildGenericShaderHeader(AbstractSectionRenderer<?, ?> renderer, String input) {
         StringBuilder builder = new StringBuilder(input).append("\n\n\n");
 
         if (this.data.getUniforms() != null) {
-            builder.append("layout(binding = "+UNIFORM_BINDING_POINT+", std140) uniform ShaderUniformBindings ")
+            builder.append("layout(binding = ").append(UNIFORM_BINDING_POINT)
+                    .append(", std140) uniform ShaderUniformBindings ")
                     .append(this.data.getUniforms().layout())
                     .append(";\n\n");
         }
 
         if (this.data.getSsboSet() != null) {
-            builder.append("#define BUFFER_BINDING_INDEX_BASE 10\n");//TODO: DONT RANDOMLY MAKE THIS 10
+            builder.append("#define BUFFER_BINDING_INDEX_BASE ").append(SSBO_BINDING_BASE).append("\n");
             builder.append(this.data.getSsboSet().layout()).append("\n\n");
         }
 
         if (this.data.getImageSet() != null) {
-            builder.append("#define BASE_SAMPLER_BINDING_INDEX 6\n");//TODO: DONT RANDOMLY MAKE THIS 6
+            builder.append("#define BASE_SAMPLER_BINDING_INDEX ").append(IMAGE_BINDING_BASE).append("\n");
             builder.append(this.data.getImageSet().layout()).append("\n\n");
         }
 
         return builder.append("\n\n");
     }
 
-
-
     @Override
     public String patchOpaqueShader(AbstractSectionRenderer<?, ?> renderer, String input) {
         var builder = this.buildGenericShaderHeader(renderer, input);
-
         builder.append(this.data.opaqueFragPatch());
-
         return builder.toString();
     }
 
@@ -263,7 +306,8 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
         var builder = new StringBuilder();
 
         if (this.data.getUniforms() != null) {
-            builder.append("layout(binding = "+uboBindingPoint+", std140) uniform ShaderUniformBindings ")
+            builder.append("layout(binding = ").append(uboBindingPoint)
+                    .append(", std140) uniform ShaderUniformBindings ")
                     .append(this.data.getUniforms().layout())
                     .append(";\n\n");
         }
