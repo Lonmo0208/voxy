@@ -36,18 +36,27 @@ public class HiZBuffer {
     public HiZBuffer() {
         this(GL_DEPTH24_STENCIL8);
     }
+
     public HiZBuffer(int type) {
         glNamedFramebufferDrawBuffer(this.fb.id, GL_NONE);
         this.type = type;
     }
 
     private void alloc(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("HiZBuffer width/height must be positive: " + width + "x" + height);
+        }
+
         this.levels = (int)Math.ceil(Math.log(Math.max(width, height))/Math.log(2));
         //We dont care about e.g. 1x1 size texture since you dont get meshlets that big to cover such a large area
         //this.levels -= 1;//Arbitrary size, shinks the max level by alot and saves a significant amount of processing time
         // (could probably increase it to be defined by a max meshlet coverage computation thing)
 
         //GL_DEPTH_COMPONENT32F //Cant use this as it does not match the depth format of the provided depth buffer
+        if (this.texture != null) {
+            this.texture.free();
+        }
+
         this.texture = new GlTexture().store(this.type, this.levels, width, height).name("HiZ");
         glTextureParameteri(this.texture.id, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
         glTextureParameteri(this.texture.id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -68,13 +77,19 @@ public class HiZBuffer {
     }
 
     public void buildMipChain(int srcDepthTex, int width, int height) {
+        if (srcDepthTex <= 0 || width <= 0 || height <= 0) {
+            return;
+        }
+
         if (this.width != Integer.highestOneBit(width) || this.height != Integer.highestOneBit(height)) {
-            if (this.texture != null) {
-                this.texture.free();
-                this.texture = null;
-            }
             this.alloc(Integer.highestOneBit(width), Integer.highestOneBit(height));
         }
+
+        if (this.texture == null) {
+            System.err.println("HiZBuffer texture is null after alloc! Cannot build mip chain.");
+            return;
+        }
+
         glBindVertexArray(GlVertexArray.STATIC_VAO);
         int boundFB = GL11.glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
         this.hiz.bind();
@@ -84,24 +99,29 @@ public class HiZBuffer {
         glDepthMask(true);
         glEnable(GL_DEPTH_TEST);
 
-
         glBindTextureUnit(0, srcDepthTex);
         glBindSampler(0, this.sampler);
         glUniform1i(0, 0);
         int cw = this.width;
         int ch = this.height;
+
         for (int i = 0; i < this.levels; i++) {
             this.fb.bind(GL_DEPTH_ATTACHMENT, this.texture, i);
-            glViewport(0, 0, cw, ch); cw = Math.max(cw/2, 1); ch = Math.max(ch/2, 1);
+            glViewport(0, 0, cw, ch);
+            cw = Math.max(cw/2, 1);
+            ch = Math.max(ch/2, 1);
+
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
             glTextureBarrier();
             glMemoryBarrier(GL_FRAMEBUFFER_BARRIER_BIT|GL_TEXTURE_FETCH_BARRIER_BIT);
             glTextureParameteri(this.texture.id, GL_TEXTURE_BASE_LEVEL, i);
             glTextureParameteri(this.texture.id, GL_TEXTURE_MAX_LEVEL, i);
-            if (i==0) {
+
+            if (i == 0) {
                 glBindTextureUnit(0, this.texture.id);
             }
         }
+
         glTextureParameteri(this.texture.id, GL_TEXTURE_BASE_LEVEL, 0);
         glTextureParameteri(this.texture.id, GL_TEXTURE_MAX_LEVEL, 1000);//TODO: CHECK IF ITS -1 or -0
 
@@ -123,10 +143,10 @@ public class HiZBuffer {
     }
 
     public int getHizTextureId() {
-        return this.texture.id;
+        return (this.texture != null) ? this.texture.id : 0;
     }
 
     public int getPackedLevels() {
-        return (this.width<<16)|this.height;//+1
+        return (this.width<<16)|this.height;
     }
 }

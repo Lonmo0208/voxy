@@ -177,6 +177,9 @@ public abstract class AbstractRenderPipeline extends TrackedObject {
     }
 
     protected void innerPrimaryWork(Viewport<?> viewport, int depthBuffer) {
+        if (depthBuffer <= 0 || viewport == null || viewport.hiZBuffer == null) {
+            return;
+        }
 
         //Compute the mip chain
         viewport.hiZBuffer.buildMipChain(depthBuffer, viewport.width, viewport.height);

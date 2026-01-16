@@ -65,7 +65,6 @@ public class DepthFramebuffer {
     }
 
     public void clear(float depth) {
-        // 关键修复4：检查帧缓冲是否有效
         if (this.framebuffer.id == 0) {
             LOGGER.warn("尝试清除无效的深度帧缓冲，跳过");
             return;
