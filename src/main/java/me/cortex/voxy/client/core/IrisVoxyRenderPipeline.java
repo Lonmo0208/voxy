@@ -1,6 +1,7 @@
 package me.cortex.voxy.client.core;
 
 import me.cortex.voxy.client.core.gl.GlBuffer;
+import me.cortex.voxy.client.core.gl.GlTexture;
 import me.cortex.voxy.client.core.model.ModelBakerySubsystem;
 import me.cortex.voxy.client.core.rendering.Viewport;
 import me.cortex.voxy.client.core.rendering.hierachical.AsyncNodeManager;
@@ -14,6 +15,8 @@ import me.cortex.voxy.client.iris.IrisVoxyRenderPipelineData;
 import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL30;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -24,6 +27,8 @@ import static org.lwjgl.opengl.GL31.GL_UNIFORM_BUFFER;
 import static org.lwjgl.opengl.GL45C.*;
 
 public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
+    private static final Logger LOGGER = LoggerFactory.getLogger(IrisVoxyRenderPipeline.class);
+
     private final IrisVoxyRenderPipelineData data;
     private final FullscreenBlit depthBlit;
 
@@ -99,15 +104,29 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
         int viewportWidth = viewport.width;
         int viewportHeight = viewport.height;
 
+        if (viewportWidth <= 0 || viewportHeight <= 0) {
+            LOGGER.warn("Viewport尺寸无效: {}x{}，跳过帧缓冲设置", viewportWidth, viewportHeight);
+            return 0;
+        }
+
         boolean sizeChanged = (viewportWidth != lastWidth || viewportHeight != lastHeight);
         boolean opaqueAttachmentsChanged = attachmentsChanged(this.data.opaqueDrawTargets, lastOpaqueDrawTargets);
         boolean translucentAttachmentsChanged = attachmentsChanged(this.data.translucentDrawTargets, lastTranslucentDrawTargets);
 
         if (sizeChanged || opaqueAttachmentsChanged) {
-            this.fb.resize(viewportWidth, viewportHeight);
+            boolean resizeSuccess = this.fb.resize(viewportWidth, viewportHeight);
+            if (!resizeSuccess) {
+                LOGGER.error("不透明帧缓冲resize失败！");
+                return 0;
+            }
 
             attachColorAttachments(this.fb, this.data.opaqueDrawTargets);
-            this.fb.framebuffer.verify();
+            try {
+                this.fb.framebuffer.verify();
+            } catch (IllegalStateException e) {
+                LOGGER.error("不透明帧缓冲验证失败", e);
+                throw e;
+            }
 
             lastWidth = viewportWidth;
             lastHeight = viewportHeight;
@@ -115,10 +134,19 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
         }
 
         if (sizeChanged || translucentAttachmentsChanged) {
-            this.fbTranslucent.resize(viewportWidth, viewportHeight);
+            boolean resizeSuccess = this.fbTranslucent.resize(viewportWidth, viewportHeight);
+            if (!resizeSuccess) {
+                LOGGER.error("半透明帧缓冲resize失败！");
+                return 0;
+            }
 
             attachColorAttachments(this.fbTranslucent, this.data.translucentDrawTargets);
-            this.fbTranslucent.framebuffer.verify();
+            try {
+                this.fbTranslucent.framebuffer.verify();
+            } catch (IllegalStateException e) {
+                LOGGER.error("半透明帧缓冲验证失败", e);
+                throw e;
+            }
 
             lastTranslucentDrawTargets = copyArray(this.data.translucentDrawTargets);
         }
@@ -130,23 +158,46 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
 
         this.initDepthStencil(sourceFramebuffer, this.fb.framebuffer.id,
                 srcWidth, srcHeight, viewportWidth, viewportHeight);
-        return this.fb.getDepthTex().id;
+
+        GlTexture depthTex = this.fb.getDepthTex();
+        if (depthTex == null || depthTex.id == 0) {
+            LOGGER.error("深度纹理无效！");
+            return 0;
+        }
+        return depthTex.id;
     }
 
     private void attachColorAttachments(DepthFramebuffer framebuffer, int[] drawTargets) {
+        if (framebuffer == null || framebuffer.framebuffer.id == 0) {
+            LOGGER.warn("尝试给无效帧缓冲绑定颜色附件，跳过");
+            return;
+        }
+
         if (drawTargets == null || drawTargets.length == 0) {
             glNamedFramebufferDrawBuffers(framebuffer.framebuffer.id, GL_NONE);
             return;
         }
 
         int[] bindings = new int[drawTargets.length];
+        int validAttachmentCount = 0;
         for (int i = 0; i < drawTargets.length; i++) {
             bindings[i] = GL30.GL_COLOR_ATTACHMENT0 + i;
-            if (drawTargets[i] != 0) {
-                glNamedFramebufferTexture(framebuffer.framebuffer.id, bindings[i], drawTargets[i], 0);
+            int textureId = drawTargets[i];
+            if (textureId != 0) {
+                glNamedFramebufferTexture(framebuffer.framebuffer.id, bindings[i], textureId, 0);
+                validAttachmentCount++;
+            } else {
+                LOGGER.warn("颜色附件{}的纹理ID为0（无效），跳过绑定", i);
+                glNamedFramebufferTexture(framebuffer.framebuffer.id, bindings[i], 0, 0);
             }
         }
-        glNamedFramebufferDrawBuffers(framebuffer.framebuffer.id, bindings);
+
+        if (validAttachmentCount == 0) {
+            glNamedFramebufferDrawBuffers(framebuffer.framebuffer.id, GL_NONE);
+            LOGGER.warn("没有有效颜色附件，设置绘制缓冲为GL_NONE");
+        } else {
+            glNamedFramebufferDrawBuffers(framebuffer.framebuffer.id, bindings);
+        }
     }
 
     private boolean attachmentsChanged(int[] current, int[] last) {
@@ -161,7 +212,7 @@ public class IrisVoxyRenderPipeline extends AbstractRenderPipeline {
     }
 
     private int[] copyArray(int[] source) {
-        if (source == null) return new int[0];;
+        if (source == null) return new int[0];
         int[] copy = new int[source.length];
         System.arraycopy(source, 0, copy, 0, source.length);
         return copy;
