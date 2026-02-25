@@ -26,7 +26,7 @@ public class VoxyConfig {
     public boolean enabled = true;
     public boolean enableRendering = true;
     public boolean ingestEnabled = true;
-    public int sectionRenderDistance = 16;
+    public float sectionRenderDistance = 16;
     public int serviceThreads = (int) Math.max(CpuLayout.getCoreCount()/1.5, 1);
     public float subDivisionSize = 64;
     public boolean useEnvironmentalFog = true;
@@ -48,6 +48,7 @@ public class VoxyConfig {
                     Logger.error("Could not parse config", e);
                 }
             }
+            Logger.info("Config doesnt exist, creating new");
             var config = new VoxyConfig();
             config.save();
             return config;
@@ -60,6 +61,11 @@ public class VoxyConfig {
     }
 
     public void save() {
+        if (!VoxyCommon.isAvailable()) {
+            Logger.info("Not saving config since voxy is unavalible");
+            return;
+        }
+
         try {
             Files.writeString(getConfigPath(), GSON.toJson(this));
         } catch (IOException e) {

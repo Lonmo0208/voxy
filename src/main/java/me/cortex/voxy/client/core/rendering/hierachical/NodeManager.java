@@ -144,9 +144,6 @@ public class NodeManager {
         //Verify that pos is actually valid
         assertPosValid(pos);
 
-        if ((pos&0xF) != 0) {
-            throw new IllegalStateException("BAD POS !! YOU DID SOMETHING VERY BAD");
-        }
         if (this.activeSectionMap.containsKey(pos)) {
             Logger.error("Tried inserting top level pos " + WorldEngine.pprintPos(pos) + " but it was in active map, discarding!");
             return;
@@ -896,7 +893,7 @@ public class NodeManager {
 
                     //TODO: make into warning or log error
                     //throw new IllegalStateException("Request result with child existence of 0");
-
+                    Logger.warn("Request result with child existence of 0, for child pos " + WorldEngine.pprintPos(childPos));
                 }
                 this.nodeData.setNodeChildExistence(childNodeId, childExistence);
                 this.nodeData.setNodeGeometry(childNodeId, request.getChildMesh(childIdx));
@@ -1407,7 +1404,7 @@ public class NodeManager {
                 (WorldEngine.getZ(basePos)<<1)|((addin>>1)&1));
     }
 
-    private long makeParentPos(long pos) {
+    private static long makeParentPos(long pos) {
         int lvl = WorldEngine.getLevel(pos);
         if (lvl == MAX_LOD_LAYER) {
             throw new IllegalArgumentException("Cannot create a parent higher than LoD " + (MAX_LOD_LAYER));
