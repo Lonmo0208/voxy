@@ -92,6 +92,8 @@ public class NormalRenderPipeline extends AbstractRenderPipeline {
             nglUniformMatrix4fv(4, 1, false, ptr);//invMVP
         }
 
+        glUniform1i(5, VoxyConfig.CONFIG.highQualitySSAO ? 1 : 0);
+
 
         glBindImageTexture(0, this.colourSSAOTex.id, 0, false,0, GL_READ_WRITE, GL_RGBA8);
         glBindTextureUnit(1, this.fb.getDepthTex().id);

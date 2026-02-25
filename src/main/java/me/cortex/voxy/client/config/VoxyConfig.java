@@ -32,6 +32,7 @@ public class VoxyConfig implements OptionStorage<VoxyConfig> {
     public float subDivisionSize = 64;
     public boolean renderVanillaFog = false;
     public boolean dontUseSodiumBuilderThreads = false;
+    public boolean highQualitySSAO = false;
 
     private static VoxyConfig loadOrCreate() {
         if (VoxyCommon.isAvailable()) {

@@ -149,6 +149,13 @@ public abstract class VoxyConfigScreenPages {
                         .setBinding((s, v)-> RenderStatistics.enabled = v, s -> RenderStatistics.enabled)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build()
+                ).add(OptionImpl.createBuilder(boolean.class, storage)
+                        .setName(Component.translatable("voxy.config.general.high_quality_ssao"))
+                        .setTooltip(Component.translatable("voxy.config.general.high_quality_ssao.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setBinding((s, v) -> s.highQualitySSAO = v, s -> s.highQualitySSAO)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build()
                 ).build()
         );
         return new OptionPage(Component.translatable("voxy.config.title"), ImmutableList.copyOf(groups));

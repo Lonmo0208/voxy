@@ -7,6 +7,7 @@ layout(binding = 1) uniform sampler2D depthTex;
 layout(binding = 2) uniform sampler2D colourTex;
 layout(location = 3) uniform mat4 MVP;
 layout(location = 4) uniform mat4 invMVP;
+layout(location = 5) uniform int highQuality;
 
 vec3 rev3d(vec3 clip) {
     vec4 view = invMVP * vec4(clip*2.0-1.0,1.0);
@@ -20,7 +21,10 @@ vec4 reDeProject(vec3 pos) {
     //TODO: sample the colour texture and check if the alpha has the hasAO flag
 
     float depth = texture(depthTex, UV).x;
-    if (depth == 1.0f) {
+    if (highQuality == 1) {
+        depth += 0.00001;
+    }
+    if (depth >= 1.0f) {
         return vec4(-1.0f);
     }
     uint meta = uint(255.0f*texture(colourTex, UV).w);
@@ -74,7 +78,8 @@ void main() {
                 vec3 viewNormal = vec3(uint((face>>1)==2), uint((face>>1)==0), uint((face>>1)==1)) * (float(int(face)&1)*2-1);
                 //vec3 viewNormal = vec3(uint((face>>1)==2), uint((face>>1)==0), uint((face>>1)==1)) * (-sign(pos));
 
-                d = computeAOAngle(pos, 1.0*(1<<lod), viewNormal);//1
+                float radiusMult = (highQuality == 1) ? 0.5 : 1.0;
+                d = computeAOAngle(pos, radiusMult*(1<<lod), viewNormal);//1
                 if (d<0.1) {
                     d = 0.0f;
                 }

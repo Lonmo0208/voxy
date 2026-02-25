@@ -20,7 +20,7 @@ public class MixinShaderLoader {
             method = "getShaderSource",
             at = @At(
                     value = "INVOKE",
-                    target = "Ljava/lang/Class;getResourceAsStream(Ljava/lang/String;)Ljava/io/InputStream;"
+                    target = "Ljava/lang/ClassLoader;getResourceAsStream(Ljava/lang/String;)Ljava/io/InputStream;"
             ),
             cancellable = true
     )

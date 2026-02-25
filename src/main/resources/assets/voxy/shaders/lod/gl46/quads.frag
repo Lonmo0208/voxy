@@ -155,7 +155,7 @@ void main() {
     }
 
     //Check the minimum bounding texture and ensure we are greater than it
-    if (gl_FragCoord.z < texelFetch(depthTex, ivec2(gl_FragCoord.xy), 0).r) {
+    if (gl_FragCoord.z < texelFetch(depthTex, ivec2(gl_FragCoord.xy), 0).r - 0.00001) {
         discard;
         return;
     }
