@@ -4,6 +4,8 @@ import net.caffeinemc.mods.sodium.client.util.color.ColorSRGB;
 import net.minecraft.client.renderer.texture.MipmapGenerator;
 import net.minecraft.util.ARGB;
 
+import java.util.Arrays;
+
 //Texturing utils to manipulate data from the model bakery
 public class TextureUtils {
     //Returns the number of non pixels not written to
@@ -127,13 +129,31 @@ public class TextureUtils {
         //https://registry.khronos.org/OpenGL-Refpages/gl4/html/glDepthRange.xhtml
         // due to this and the unsigned bullshit, believe the depth value needs to get multiplied by 2
 
-        //Shouldent be needed due to the compute bake copy
-        depthF *= 2;
-        if (depthF > 1.00001f) {//Basicly only happens when a model goes out of bounds (thing)
-            //System.err.println("Warning: Depth greater than 1");
-            depthF = 1.0f;
-        }
+        ////Shouldent be needed due to the compute bake copy
+        //depthF *= 2;
+        //if (depthF > 1.00001f) {//Basicly only happens when a model goes out of bounds (thing)
+        //    //System.err.println("Warning: Depth greater than 1");
+        //    depthF = 1.0f;
+        //}
         return depthF;
+    }
+
+
+    public static long[] generateMask(ColourDepthTextureData data, int checkMode) {
+        return generateMask(data, checkMode, new long[data.width()*data.height()/64]);
+    }
+    public static long[] generateMask(ColourDepthTextureData data, int checkMode, long[] outMsk) {
+        Arrays.fill(outMsk, 0);
+        int i = 0;
+        for (int y = 0; y < data.height(); y++) {
+            for (int x = 0; x < data.width(); x++) {
+                if (wasPixelWritten(data, checkMode, i)) {
+                    outMsk[i/64] |= 1L << (i&63);
+                }
+                i++;
+            }
+        }
+        return outMsk;
     }
 
 

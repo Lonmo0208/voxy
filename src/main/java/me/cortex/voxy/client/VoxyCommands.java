@@ -1,12 +1,13 @@
 package me.cortex.voxy.client;
 
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
-import me.cortex.voxy.common.Logger;
+import me.cortex.voxy.common.DebugUtils;
 import me.cortex.voxy.commonImpl.VoxyCommon;
 import me.cortex.voxy.commonImpl.WorldIdentifier;
 import me.cortex.voxy.commonImpl.importers.DHImporter;
@@ -15,12 +16,9 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.File;
 import java.io.IOException;
@@ -50,6 +48,8 @@ public class VoxyCommands {
                                 .executes(VoxyCommands::importZip)
                                 .then(ClientCommandManager.argument("innerPath", StringArgumentType.string())
                                         .executes(VoxyCommands::importZip))))
+                .then(ClientCommandManager.literal("current")
+                        .executes(VoxyCommands::importCurrentWorldIn))
                 .then(ClientCommandManager.literal("cancel")
                         .executes(VoxyCommands::cancelImport));
 
@@ -60,10 +60,18 @@ public class VoxyCommands {
                             .executes(VoxyCommands::importDistantHorizons)));
         }
 
+        var debug = ClientCommandManager.literal("debug")
+                .then(ClientCommandManager.literal("verifyTLNChildMask")
+                        .executes(ctx->verifyTLNs(ctx, false))
+                        .then(ClientCommandManager.argument("attemptRepair", BoolArgumentType.bool())
+                                .executes(ctx->verifyTLNs(ctx, BoolArgumentType.getBool(ctx, "attemptRepair"))))
+                );
+
         return ClientCommandManager.literal("voxy")//.requires((ctx)-> VoxyCommon.getInstance() != null)
                 .then(ClientCommandManager.literal("reload")
                         .executes(VoxyCommands::reloadInstance))
-                .then(imports);
+                .then(imports)
+                .then(debug);
     }
 
     private static int reloadInstance(CommandContext<FabricClientCommandSource> ctx) {
@@ -74,7 +82,7 @@ public class VoxyCommands {
         }
         var wr = Minecraft.getInstance().levelRenderer;
         if (wr!=null) {
-            ((IGetVoxyRenderSystem)wr).shutdownRenderer();
+            ((IGetVoxyRenderSystem)wr).voxy$shutdownRenderer();
         }
 
         VoxyCommon.shutdownInstance();
@@ -86,7 +94,18 @@ public class VoxyCommands {
         return 0;
     }
 
-
+    private static int verifyTLNs(CommandContext<FabricClientCommandSource> ctx, boolean attemptRepair) {
+        var instance = VoxyCommon.getInstance();
+        if (instance == null) {
+            ctx.getSource().sendError(Component.translatable("Voxy must be enabled in settings to use this"));
+            return 1;
+        }
+        if (Minecraft.getInstance().level == null) {
+            throw new IllegalStateException("How you even do this");
+        }
+        DebugUtils.verifyAllTopLevelNodes(WorldIdentifier.ofEngine(Minecraft.getInstance().level), attemptRepair);
+        return 0;
+    }
 
 
     private static int importDistantHorizons(CommandContext<FabricClientCommandSource> ctx) {
@@ -194,6 +213,26 @@ public class VoxyCommands {
         } catch (IOException e) {}
 
         return sb.buildFuture();
+    }
+
+
+    private static int importCurrentWorldIn(CommandContext<FabricClientCommandSource> ctx) {
+        if (VoxyCommon.getInstance() == null) {
+            ctx.getSource().sendError(Component.translatable("Voxy must be enabled in settings to use this"));
+            return 1;
+        }
+
+        var localServer = Minecraft.getInstance().getSingleplayerServer();
+        if (localServer == null) {
+            ctx.getSource().sendError(Component.translatable("You must be in single player to use this command"));
+            return 1;
+        }
+        var regionPath = DimensionType.getStorageFolder(Minecraft.getInstance().level.dimension(), localServer.getWorldPath(LevelResource.ROOT)).resolve("region");
+        if ((!regionPath.toFile().exists())||!regionPath.toFile().isDirectory()) {
+            ctx.getSource().sendError(Component.translatable("Cannot find region folder for current dimension"));
+            return 1;
+        }
+        return fileBasedImporter(regionPath.toFile())?0:1;
     }
 
     private static int importWorld(CommandContext<FabricClientCommandSource> ctx) {

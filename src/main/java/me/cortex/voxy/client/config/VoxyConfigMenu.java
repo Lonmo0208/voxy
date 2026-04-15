@@ -1,16 +1,13 @@
 package me.cortex.voxy.client.config;
 
-import me.cortex.voxy.client.RenderStatistics;
+import me.cortex.voxy.client.ClientSessionEvents;
 import me.cortex.voxy.client.config.SodiumConfigBuilder.*;
-import me.cortex.voxy.client.VoxyClient;
-import me.cortex.voxy.client.VoxyClientInstance;
 import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
 import me.cortex.voxy.client.core.util.IrisUtil;
 import me.cortex.voxy.common.util.cpu.CpuLayout;
 import me.cortex.voxy.commonImpl.VoxyCommon;
 import net.caffeinemc.mods.sodium.api.config.ConfigEntryPoint;
 import net.caffeinemc.mods.sodium.api.config.option.OptionFlag;
-import net.caffeinemc.mods.sodium.api.config.option.OptionImpact;
 import net.caffeinemc.mods.sodium.api.config.option.Range;
 import net.caffeinemc.mods.sodium.api.config.structure.ConfigBuilder;
 import net.minecraft.client.Minecraft;
@@ -45,7 +42,7 @@ public class VoxyConfigMenu implements ConfigEntryPoint {
                                         ()->CFG.enabled, v->{
                                             CFG.enabled=v;
                                             //we need to special case enabled, since the render reload flag runs befor us and its quite important we get it right
-                                            if (v&&VoxyClientInstance.isInGame) {
+                                            if (v && ClientSessionEvents.inSession) {//We should only load when we are in session
                                                 VoxyCommon.createInstance();
                                             }
                                         })
@@ -53,7 +50,7 @@ public class VoxyConfigMenu implements ConfigEntryPoint {
                                             if (!c) {
                                                 var vrsh = (IGetVoxyRenderSystem) Minecraft.getInstance().levelRenderer;
                                                 if (vrsh != null) {
-                                                    vrsh.shutdownRenderer();
+                                                    vrsh.voxy$shutdownRenderer();
                                                 }
                                                 VoxyCommon.shutdownInstance();
                                             }
@@ -69,7 +66,7 @@ public class VoxyConfigMenu implements ConfigEntryPoint {
                                         "voxy:use_sodium_threads",
                                         Component.translatable("voxy.config.general.useSodiumBuilder"),
                                         ()->!CFG.dontUseSodiumBuilderThreads, v->CFG.dontUseSodiumBuilderThreads=!v)
-                                        .setPostChangeFlags("voxy:update_threads")
+                                        .setPostChangeFlags("voxy:update_threads", RENDER_RELOAD)
                         ), new Group(
                                 new BoolOption(
                                         "voxy:ingest_enabled",
@@ -87,9 +84,9 @@ public class VoxyConfigMenu implements ConfigEntryPoint {
                                             var vrsh = (IGetVoxyRenderSystem)Minecraft.getInstance().levelRenderer;
                                             if (vrsh != null) {
                                                 if (c) {
-                                                    vrsh.createRenderer();
+                                                    vrsh.voxy$createRenderer();
                                                 } else {
-                                                    vrsh.shutdownRenderer();
+                                                    vrsh.voxy$shutdownRenderer();
                                                 }
                                             }
                                         },"voxy:enabled", RENDER_RELOAD)
@@ -105,15 +102,18 @@ public class VoxyConfigMenu implements ConfigEntryPoint {
                                 new IntOption(
                                         "voxy:render_distance",
                                         Component.translatable("voxy.config.general.renderDistance"),
-                                        ()->CFG.sectionRenderDistance, v->CFG.sectionRenderDistance=v,
-                                        new Range(2, 64, 1))
-                                        .setFormatter(v->Component.literal(Integer.toString(v*32)))//Top level rd == 32 chunks
+                                        ()->Math.round(CFG.sectionRenderDistance*16), v->CFG.sectionRenderDistance=((float)v)/16,
+                                        new Range(10/*1*16*/, 64*16, 1))
+                                        //The value is stored as a float with respect to the size of top level lods, it its increment is a fraction with respect to the size of the bottom level lod
+                                        // the value is displayed as a chunk render distance
+                                        .setFormatter(v->Component.literal(Integer.toString(v*2)))
                                         .setPostChangeRunner(c->{
                                             var vrsh = (IGetVoxyRenderSystem)Minecraft.getInstance().levelRenderer;
                                             if (vrsh != null) {
-                                                var vrs = vrsh.getVoxyRenderSystem();
+                                                var vrs = vrsh.voxy$getRenderSystem();
                                                 if (vrs != null) {
-                                                    vrs.setRenderDistance(c);
+                                                    //CFG.sectionRenderDistance == c/16
+                                                    vrs.setRenderDistance(CFG.sectionRenderDistance);
                                                 }
                                             }
                                         }, "voxy:rendering", RENDER_RELOAD)
@@ -123,12 +123,7 @@ public class VoxyConfigMenu implements ConfigEntryPoint {
                                         Component.translatable("voxy.config.general.environmental_fog"),
                                         ()->CFG.useEnvironmentalFog, v->CFG.useEnvironmentalFog=v)
                                         .setPostChangeFlags(RENDER_RELOAD)
-                        ), new Group(
-                                new BoolOption(
-                                        "voxy:render_debug",
-                                        Component.translatable("voxy.config.general.render_statistics"),
-                                        ()-> RenderStatistics.enabled, v->RenderStatistics.enabled=v)
-                                        .setPostChangeFlags(RENDER_RELOAD))
+                        )
                 ).setEnablerAND("voxy:enabled", "voxy:rendering"));
 
     }

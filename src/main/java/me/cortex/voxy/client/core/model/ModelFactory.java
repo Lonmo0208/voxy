@@ -5,11 +5,9 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
-import me.cortex.voxy.client.core.gl.Capabilities;
 import me.cortex.voxy.client.core.gl.GlBuffer;
 import me.cortex.voxy.client.core.gl.GlTexture;
-import me.cortex.voxy.client.core.model.bakery.ModelTextureBakery;
-import me.cortex.voxy.client.core.rendering.util.RawDownloadStream;
+import me.cortex.voxy.client.core.model.bakery.SoftwareModelTextureBakery;
 import me.cortex.voxy.client.core.rendering.util.UploadStream;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.util.MemoryBuffer;
@@ -21,6 +19,7 @@ import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
@@ -29,12 +28,10 @@ import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.LeavesBlock;
-import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
 import org.jetbrains.annotations.Nullable;
@@ -75,7 +72,8 @@ public class ModelFactory {
 
     private final Biome DEFAULT_BIOME = Minecraft.getInstance().level.registryAccess().lookupOrThrow(Registries.BIOME).getValue(Biomes.PLAINS);
 
-    public final ModelTextureBakery bakery;
+    public final SoftwareModelTextureBakery bakery2;
+    private final long bakeScratchBuffer = MemoryUtil.nmemAlloc(MODEL_TEXTURE_SIZE*MODEL_TEXTURE_SIZE*8*6);
 
 
     //Model data might also contain a constant colour if the colour resolver produces a constant colour, this saves space in the
@@ -124,9 +122,8 @@ public class ModelFactory {
 
     private final Mapper mapper;
     private final ModelStore storage;
-    private final RawDownloadStream downstream = new RawDownloadStream(8*1024*1024);//8mb downstream
 
-    private final ConcurrentLinkedDeque<RawBakeResult> rawBakeResults = new ConcurrentLinkedDeque<>();
+    private final ConcurrentLinkedDeque<BlockBake> bakeQueue = new ConcurrentLinkedDeque<>();
 
     private final ConcurrentLinkedDeque<ResultUploader> uploadResults = new ConcurrentLinkedDeque<>();
 
@@ -137,7 +134,8 @@ public class ModelFactory {
     public ModelFactory(Mapper mapper, ModelStore storage) {
         this.mapper = mapper;
         this.storage = storage;
-        this.bakery = new ModelTextureBakery(MODEL_TEXTURE_SIZE, MODEL_TEXTURE_SIZE);
+        this.bakery2 = new SoftwareModelTextureBakery();
+        this.bakery2.setupTexture();
 
         this.metadataCache = new long[1<<16];
         this.fluidStateLUT = new int[1<<16];
@@ -153,28 +151,7 @@ public class ModelFactory {
         this.customBlockStateIdMapping = mapping;
     }
 
-    private static final class RawBakeResult {
-        private final int blockId;
-        private final BlockState blockState;
-        private final MemoryBuffer rawData;
-
-        public boolean isShaded;
-        public boolean hasDarkenedTextures;
-
-        public RawBakeResult(int blockId, BlockState blockState, MemoryBuffer rawData) {
-            this.blockId = blockId;
-            this.blockState = blockState;
-            this.rawData = rawData;
-        }
-
-        public RawBakeResult(int blockId, BlockState blockState) {
-            this(blockId, blockState, new MemoryBuffer(MODEL_TEXTURE_SIZE*MODEL_TEXTURE_SIZE*2*4*6));
-        }
-
-        public RawBakeResult cpyBuf(long ptr) {
-            this.rawData.cpyFrom(ptr);
-            return this;
-        }
+    private static final record BlockBake(int blockId, BlockState state) {
     }
 
     public boolean addEntry(int blockId) {
@@ -201,6 +178,14 @@ public class ModelFactory {
 
         var blockState = this.mapper.getBlockStateFromBlockId(blockId);
 
+        if (blockState.getBlock() instanceof StairBlock sb) {
+            if (sb.baseState.hasProperty(BlockStateProperties.WATERLOGGED)) {
+                blockState = sb.baseState.setValue(BlockStateProperties.WATERLOGGED, blockState.getValue(BlockStateProperties.WATERLOGGED));
+            } else {
+                blockState = sb.baseState;
+            }
+        }
+
         //Before we enqueue the baking of this blockstate, we must check if it has a fluid state associated with it
         // if it does, we must ensure that it is (effectivly) baked BEFORE we bake this blockstate
         boolean isFluid = blockState.getBlock() instanceof LiquidBlock;
@@ -218,21 +203,23 @@ public class ModelFactory {
                 addEntry(fluidStateId);
             }
         }
-
-        RawBakeResult result = new RawBakeResult(blockId, blockState);
-        int allocation = this.downstream.download(MODEL_TEXTURE_SIZE*MODEL_TEXTURE_SIZE*2*4*6, ptr -> this.rawBakeResults.add(result.cpyBuf(ptr)));
-        int flags = this.bakery.renderToStream(blockState, this.downstream.getBufferId(), allocation);
-        result.hasDarkenedTextures = (flags&2)!=0;
-        result.isShaded = (flags&1)!=0;
+        this.bakeQueue.add(new BlockBake(blockId, blockState));
         return true;
     }
 
     private boolean processModelResult() {
-        var result = this.rawBakeResults.poll();
-        if (result == null) return false;
+        var bake = this.bakeQueue.poll();
+        if (bake == null) return false;
         ColourDepthTextureData[] textureData = new ColourDepthTextureData[6];
+
+        int flags = this.bakery2.renderToOutput(bake.state, this.bakeScratchBuffer);
+
+        boolean hasDarkenedTextures = (flags&2)!=0;
+        boolean isShaded = (flags&1)!=0;
+
         {//Create texture data
-            long ptr = result.rawData.address;
+            long ptr = this.bakeScratchBuffer;
+            //long ptr = result.rawData.address;
             final int FACE_SIZE = MODEL_TEXTURE_SIZE * MODEL_TEXTURE_SIZE;
             for (int face = 0; face < 6; face++) {
                 long faceDataPtr = ptr + (FACE_SIZE * 4) * face * 2;
@@ -241,19 +228,23 @@ public class ModelFactory {
 
                 //Copy out colour
                 for (int i = 0; i < FACE_SIZE; i++) {
-                    //De-interpolate results
-                    colour[i] = MemoryUtil.memGetInt(faceDataPtr + (i * 4 * 2));
-                    depth[i] = MemoryUtil.memGetInt(faceDataPtr + (i * 4 * 2) + 4);
+                    ////De-interpolate results
+                    //colour[i] = MemoryUtil.memGetInt(faceDataPtr + (i * 4 * 2));
+                    //depth[i] = MemoryUtil.memGetInt(faceDataPtr + (i * 4 * 2) + 4);
+
+                    long value = MemoryUtil.memGetLong(faceDataPtr+i*8);
+                    colour[i] = (int)value;
+                    depth[i] = (int) (value>>>32);
                 }
                 textureData[face] = new ColourDepthTextureData(colour, depth, MODEL_TEXTURE_SIZE, MODEL_TEXTURE_SIZE);
             }
         }
-        result.rawData.free();
-        var bakeResult = this.processTextureBakeResult(result.blockId, result.blockState, textureData, result.isShaded, result.hasDarkenedTextures);
+
+        var bakeResult = this.processTextureBakeResult(bake.blockId, bake.state, textureData, isShaded, hasDarkenedTextures);
         if (bakeResult!=null) {
             this.uploadResults.add(bakeResult);
         }
-        return !this.rawBakeResults.isEmpty();
+        return !this.bakeQueue.isEmpty();
     }
 
     private final ConcurrentLinkedDeque<Mapper.BiomeEntry> biomeQueue = new ConcurrentLinkedDeque<>();
@@ -265,7 +256,11 @@ public class ModelFactory {
         var biomeEntry = this.biomeQueue.poll();
         while (biomeEntry != null) {
             var biomeRegistry = Minecraft.getInstance().level.registryAccess().lookupOrThrow(Registries.BIOME);
-            var res = this.addBiome0(biomeEntry.id, biomeRegistry.getValue(Identifier.parse(biomeEntry.biome)));
+            var mcbiomeEntry = biomeRegistry.get(Identifier.parse(biomeEntry.biome));
+            if (!mcbiomeEntry.isPresent()) {
+                Logger.error("Could not find biome: " + biomeEntry.biome + " using default");
+            }
+            var res = this.addBiome0(biomeEntry.id, mcbiomeEntry.isPresent()?mcbiomeEntry.orElseThrow().value():DEFAULT_BIOME);
             if (res != null) {
                 this.uploadResults.add(res);
             }
@@ -275,9 +270,7 @@ public class ModelFactory {
         while (this.processModelResult());
     }
 
-    public void tickAndProcessUploads() {
-        this.downstream.tick();
-
+    public void processUploads() {
         var upload = this.uploadResults.poll();
         if (upload==null) return;
 
@@ -446,7 +439,7 @@ public class ModelFactory {
         //TODO: special case stuff like vines and glow lichen, where it can be represented by a single double sided quad
         // since that would help alot with perf of lots of vines, can be done by having one of the faces just not exist and the other be in no occlusion mode
 
-        var depths = this.computeModelDepth(textureData, checkMode);
+        var depths = computeModelDepth(textureData, checkMode, blockRenderLayer!=ChunkSectionLayer.SOLID?TextureUtils.DEPTH_MODE_MIN:TextureUtils.DEPTH_MODE_AVG);
 
         //TODO: THIS, note this can be tested for in 2 ways, re render the model with quad culling disabled and see if the result
         // is the same, (if yes then needs double sided quads)
@@ -692,6 +685,9 @@ public class ModelFactory {
     }
 
     private BiomeUploadResult addBiome0(int id, Biome biome) {
+        if (biome == null) {
+            throw new IllegalStateException("Null biome");
+        }
         for (int i = this.biomes.size(); i <= id; i++) {
             this.biomes.add(null);
         }
@@ -701,7 +697,8 @@ public class ModelFactory {
             throw new IllegalStateException("Biome was put in an id that was not null");
         }
         if (oldBiome == biome) {
-            Logger.error("Biome added was a duplicate");
+            Logger.error("Biome added was a duplicate: " + id);
+            return null;
         }
 
         if (this.modelsRequiringBiomeColours.isEmpty()) return null;
@@ -756,6 +753,10 @@ public class ModelFactory {
 
             @Override
             public int getBlockTint(BlockPos pos, ColorResolver colorResolver) {
+                if (colorResolver == null) {
+                    Logger.error("Block state: " + state + " colourprovider: " + colorProvider + " had a null colorresolver");
+                    return 0;
+                }
                 return colorResolver.getColor(biome, 0, 0);
             }
 
@@ -847,10 +848,14 @@ public class ModelFactory {
     }
 
     private static float[] computeModelDepth(ColourDepthTextureData[] textures, int checkMode) {
+        return computeModelDepth(textures, checkMode, TextureUtils.DEPTH_MODE_AVG);
+    }
+
+    private static float[] computeModelDepth(ColourDepthTextureData[] textures, int checkMode, int computeMode) {
         float[] res = new float[6];
         for (var dir : Direction.values()) {
             var data = textures[dir.get3DDataValue()];
-            float fd = TextureUtils.computeDepth(data, TextureUtils.DEPTH_MODE_AVG, checkMode);//Compute the min float depth, smaller means closer to the camera, range 0-1
+            float fd = TextureUtils.computeDepth(data, computeMode, checkMode);//Compute the min float depth, smaller means closer to the camera, range 0-1
             //int depth = Math.round(fd * MODEL_TEXTURE_SIZE);
             //If fd is -1, it means that there was nothing rendered on that face and it should be discarded
             if (fd < -0.1) {
@@ -886,17 +891,14 @@ public class ModelFactory {
         return map;
     }
 
-    public long getModelMetadataFromClientId(int clientId) {
+    public final long getModelMetadataFromClientId(int clientId) {
         return this.metadataCache[clientId];
     }
 
 
     public void free() {
-        this.bakery.free();
-        this.downstream.free();
-        while (!this.rawBakeResults.isEmpty()) {
-            this.rawBakeResults.poll().rawData.free();
-        }
+        this.bakery2.free();
+        MemoryUtil.nmemFree(this.bakeScratchBuffer);
         while (!this.uploadResults.isEmpty()) {
             this.uploadResults.poll().free();
         }
@@ -911,6 +913,7 @@ public class ModelFactory {
         int size = this.blockStatesInFlight.size();
         size += this.uploadResults.size();
         size += this.biomeQueue.size();
+        size += this.bakeQueue.size();
         return size;
     }
 

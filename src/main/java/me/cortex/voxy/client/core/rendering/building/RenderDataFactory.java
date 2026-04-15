@@ -62,7 +62,7 @@ public class RenderDataFactory {
 
     private int quadCount = 0;
 
-    private final OccupancySet occupancy = new OccupancySet();
+    private final OccupancySet occupancy;
 
     //Wont work for double sided quads
     private final class Mesher extends ScanMesher2D {
@@ -109,7 +109,7 @@ public class RenderDataFactory {
 
             //Lower 26 bits can be auxiliary data since that is where quad position information goes;
             int auxData = (int) (data&((1<<26)-1));
-            data &= ~((1<<26)-1);
+            data &= ~((1L<<26)-1);
 
             int axisSide = auxData&1;
             int type = (auxData>>1)&3;//Translucent, double side, directional
@@ -185,28 +185,27 @@ public class RenderDataFactory {
     private final Mesher seondaryblockMesher = new Mesher();//Used for dual non-opaque geometry
 
     public RenderDataFactory(WorldEngine world, ModelFactory modelManager, boolean emitMeshlets) {
+        this(world, modelManager, emitMeshlets, false);
+    }
+    public RenderDataFactory(WorldEngine world, ModelFactory modelManager, boolean emitMeshlets, boolean generateOccupancy) {
         this.world = world;
         this.modelMan = modelManager;
+        if (generateOccupancy && BUILD_OCCUPANCY_SET) {
+            this.occupancy = new OccupancySet();
+        } else {
+            this.occupancy = null;
+        }
     }
 
     private static long getQuadTyping(long metadata) {//2 bits
-        int type = 0;
-        {
-            boolean a = ModelQueries.isTranslucent(metadata);
-            boolean b = ModelQueries.isDoubleSided(metadata);
-            //Pre shift by 1
-            //type = a|b?0:4;
-            //type |= b&!a?2:0;
-            type = a?0:(b?2:4);
-        }
-        return type;
+        return 0b111L&(0b000_000_010_100L>>(ModelQueries._isTranslucent(metadata)*6+ModelQueries._isDoubleSided(metadata)*3));
     }
 
     private static long packPartialQuadData(int modelId, long state, long metadata) {
         //This uses hardcoded data to shuffle things
         long lightAndBiome =  (state&((0x1FFL<<47)|(0xFFL<<56)))>>>1;
-        lightAndBiome &= ModelQueries.isBiomeColoured(metadata)?-1:~(0x1FFL<<46);//46 not 47 because is already shifted by 1 THIS WASTED 4 HOURS ;-; aaaaaAAAAAA
-        lightAndBiome &= ModelQueries.isFullyOpaque(metadata)?~(0xFFL<<55):-1;//If its fully opaque it always uses neighbor light?
+        lightAndBiome &= ~(ModelQueries._notIsBiomeColoured(metadata) * (0x1FFL << 46));//46 not 47 because is already shifted by 1 THIS WASTED 4 HOURS ;-; aaaaaAAAAAA
+        lightAndBiome &= ~(ModelQueries._isFullyOpaque(metadata)*(0xFFL << 55));//If its fully opaque it always uses neighbor light?
 
         long quadData = lightAndBiome;
         quadData |= Integer.toUnsignedLong(modelId)<<26;
@@ -223,32 +222,37 @@ public class RenderDataFactory {
         long partialFluid = 0;
 
         int neighborAcquireMskAndFlags = 0;//-+x, -+z, -+y
-        for (int i = 0; i < 32*32*32;) {
-            long block = rawSectionData[i];//Get the block mapping
-            if (Mapper.isAir(block)) {//If it is air, just emit lighting
-                sectionData[i * 2] = (block&(0xFFL<<56))>>>1;
-                sectionData[i * 2 + 1] = 0;
-            } else {
-                int modelId = rawModelIds[Mapper.getBlockId(block)];
-                if (modelId == -1) {//Failed, so just return error
-                    return Mapper.getBlockId(block)|(1<<31);
+        int i = 0;
+        for (int q = 0; q < 512; q++) {
+            for (int j = 0; j < 64; i++, j++) {
+                long block = rawSectionData[i];//Get the block mapping
+                if (Mapper.isAir(block)) {//If it is air, just emit lighting
+                    sectionData[i * 2] = (block & (0xFFL << 56)) >>> 1;
+                    sectionData[i * 2 + 1] = 0;
+                } else {
+                    int modelId = rawModelIds[Mapper.getBlockId(block)];
+                    if (modelId == -1) {//Failed, so just return error
+                        return Mapper.getBlockId(block) | (1 << 31);
+                    }
+                    if (modelId == 0) {//modelId == 0, its basicly air so set it as air
+                        sectionData[i * 2] = (block & (0xFFL << 56)) >>> 1;
+                        sectionData[i * 2 + 1] = 0;
+                    } else {
+                        //TODO: cache the results of this, then link it to `block` do same optimization as SaveLoadSystem3
+
+                        long modelMetadata = this.modelMan.getModelMetadataFromClientId(modelId);
+
+                        sectionData[i * 2] = packPartialQuadData(modelId, block, modelMetadata);
+                        sectionData[i * 2 + 1] = modelMetadata;
+
+                        notEmpty |= 1L << j;
+                        opaque |= ModelQueries._isFullyOpaque(modelMetadata)<<j;
+                        pureFluid |= ModelQueries._isFluid(modelMetadata)<<j;
+                        partialFluid |= ModelQueries._containsFluid(modelMetadata)<<j;
+                    }
                 }
-                long modelMetadata = this.modelMan.getModelMetadataFromClientId(modelId);
-
-                sectionData[i * 2] = packPartialQuadData(modelId, block, modelMetadata);
-                sectionData[i * 2 + 1] = modelMetadata;
-
-                long msk = 1L << (i & 63);
-                opaque |= ModelQueries.isFullyOpaque(modelMetadata) ? msk : 0;
-                notEmpty |= modelId != 0 ? msk : 0;
-                pureFluid |= ModelQueries.isFluid(modelMetadata) ? msk : 0;
-                partialFluid |= ModelQueries.containsFluid(modelMetadata) ? msk : 0;
             }
-
-            //Do increment here
-            i++;
-
-            if ((i & 63) == 0 && notEmpty != 0) {
+            if (notEmpty != 0) {
                 long nonOpaque = (notEmpty^opaque)&~pureFluid;
                 long fluid = pureFluid|partialFluid;
                 this.opaqueMasks[(i >> 5) - 2] = (int) opaque;
@@ -258,20 +262,7 @@ public class RenderDataFactory {
                 this.fluidMasks[(i >> 5) - 2] = (int) fluid;
                 this.fluidMasks[(i >> 5) - 1] = (int) (fluid>>>32);
 
-                int packedEmpty = (int) ((notEmpty>>>32)|notEmpty);
-
-                int neighborMsk = 0;
-                //-+x
-                neighborMsk += packedEmpty&1;//-x
-                neighborMsk += (packedEmpty>>>30)&0b10;//+x
-
-                //notEmpty = (notEmpty != 0)?1:0;
-                neighborMsk += ((((i - 1) >> 10) == 0) ? 0b100 : 0)*(packedEmpty!=0?1:0);//-y
-                neighborMsk += ((((i - 1) >> 10) == 31) ? 0b1000 : 0)*(packedEmpty!=0?1:0);//+y
-                neighborMsk += (((((i - 33) >> 5) & 0x1F) == 0) ? 0b10000 : 0)*(((int)notEmpty)!=0?1:0);//-z
-                neighborMsk += (((((i - 1) >> 5) & 0x1F) == 31) ? 0b100000 : 0)*((notEmpty>>>32)!=0?1:0);//+z
-
-                neighborAcquireMskAndFlags |= neighborMsk;
+                neighborAcquireMskAndFlags |= getNeighborMsk(notEmpty, i);
                 neighborAcquireMskAndFlags |= opaque!=0?(1<<6):0;
 
                 opaque = 0;
@@ -283,6 +274,22 @@ public class RenderDataFactory {
         return neighborAcquireMskAndFlags;
     }
 
+    private static int getNeighborMsk(long notEmpty, int i) {
+        int packedEmpty = (int) ((notEmpty >>>32)| notEmpty);
+
+        int neighborMsk = 0;
+        //-+x
+        neighborMsk += packedEmpty&1;//-x
+        neighborMsk += (packedEmpty>>>30)&0b10;//+x
+
+        //notEmpty = (notEmpty != 0)?1:0;
+        neighborMsk += ((((i - 1) >> 10) == 0) ? 0b100 : 0)*(packedEmpty!=0?1:0);//-y
+        neighborMsk += ((((i - 1) >> 10) == 31) ? 0b1000 : 0)*(packedEmpty!=0?1:0);//+y
+        neighborMsk += (((((i - 33) >> 5) & 0x1F) == 0) ? 0b10000 : 0)*(((int) notEmpty)!=0?1:0);//-z
+        neighborMsk += (((((i - 1) >> 5) & 0x1F) == 31) ? 0b100000 : 0)*((notEmpty >>>32)!=0?1:0);//+z
+        return neighborMsk;
+    }
+
     private void acquireNeighborData(WorldSection section, int msk) {
         //TODO: fixme!!! its probably more efficent to just access the raw section array on demand instead of copying it
         if ((msk&1)!=0) {//-x
@@ -292,7 +299,7 @@ public class RenderDataFactory {
             for (int i = 0; i < 32*32; i++) {
                 this.neighboringFaces[i] = raw[(i<<5)+31];//pull the +x faces from the section
             }
-            sec.release();
+            sec.release(WorldSection.RELEASE_HINT_POSSIBLE_REUSE);
         }
         if ((msk&2)!=0) {//+x
             var sec = this.world.acquire(section.lvl, section.x + 1, section.y, section.z);
@@ -301,7 +308,7 @@ public class RenderDataFactory {
             for (int i = 0; i < 32*32; i++) {
                 this.neighboringFaces[i+32*32] = raw[(i<<5)];//pull the -x faces from the section
             }
-            sec.release();
+            sec.release(WorldSection.RELEASE_HINT_POSSIBLE_REUSE);
         }
 
         if ((msk&4)!=0) {//-y
@@ -311,7 +318,7 @@ public class RenderDataFactory {
             for (int i = 0; i < 32*32; i++) {
                 this.neighboringFaces[i+32*32*2] = raw[i|(0x1F<<10)];//pull the +y faces from the section
             }
-            sec.release();
+            sec.release(WorldSection.RELEASE_HINT_POSSIBLE_REUSE);
         }
         if ((msk&8)!=0) {//+y
             var sec = this.world.acquire(section.lvl, section.x, section.y + 1, section.z);
@@ -320,7 +327,7 @@ public class RenderDataFactory {
             for (int i = 0; i < 32*32; i++) {
                 this.neighboringFaces[i+32*32*3] = raw[i];//pull the -y faces from the section
             }
-            sec.release();
+            sec.release(WorldSection.RELEASE_HINT_POSSIBLE_REUSE);
         }
 
         if ((msk&16)!=0) {//-z
@@ -330,7 +337,7 @@ public class RenderDataFactory {
             for (int i = 0; i < 32*32; i++) {
                 this.neighboringFaces[i+32*32*4] = raw[Integer.expand(i,0b11111_00000_11111)|(0x1F<<5)];//pull the +z faces from the section
             }
-            sec.release();
+            sec.release(WorldSection.RELEASE_HINT_POSSIBLE_REUSE);
         }
         if ((msk&32)!=0) {//+z
             var sec = this.world.acquire(section.lvl, section.x, section.y, section.z + 1);
@@ -339,7 +346,7 @@ public class RenderDataFactory {
             for (int i = 0; i < 32*32; i++) {
                 this.neighboringFaces[i+32*32*5] = raw[Integer.expand(i,0b11111_00000_11111)];//pull the -z faces from the section
             }
-            sec.release();
+            sec.release(WorldSection.RELEASE_HINT_POSSIBLE_REUSE);
         }
     }
 
@@ -1624,8 +1631,9 @@ public class RenderDataFactory {
                 }
             }
         }
-
-        this.occupancy.reset();
+        if (this.occupancy != null) {
+            this.occupancy.reset();
+        }
 
         this.minX = Integer.MAX_VALUE;
         this.minY = Integer.MAX_VALUE;
@@ -1660,7 +1668,7 @@ public class RenderDataFactory {
         }
 
         //We only care if we have quads
-        if (BUILD_OCCUPANCY_SET && this.quadCount != 0 && (flags&1) != 0) {
+        if (this.occupancy != null && section.lvl == 0 /*only generate occupancy for lowest lod level*/ && this.quadCount != 0 && (flags&1) != 0) {
             this.buildOccupancy();
         }
 
@@ -1699,7 +1707,7 @@ public class RenderDataFactory {
         aabb |= (this.maxZ-this.minZ-1)<<25;
 
         MemoryBuffer occupancy = null;
-        if (BUILD_OCCUPANCY_SET && !this.occupancy.isEmpty()) {
+        if (this.occupancy != null && !this.occupancy.isEmpty()) {
             occupancy = new MemoryBuffer(this.occupancy.writeSize());
             this.occupancy.write(occupancy.address, false);
         }

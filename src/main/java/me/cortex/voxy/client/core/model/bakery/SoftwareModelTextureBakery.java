@@ -1,5 +1,13 @@
 package me.cortex.voxy.client.core.model.bakery;
 
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.CommandEncoder;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.TextureFormat;
+import com.mojang.blaze3d.vertex.PoseStack;
+import me.cortex.voxy.client.core.model.ModelFactory;
+import me.cortex.voxy.common.util.UnsafeUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
@@ -22,39 +30,66 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import org.lwjgl.opengl.ARBDrawBuffersBlend;
-import org.lwjgl.opengl.GL14;
+import org.lwjgl.system.MemoryUtil;
 
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL14C.glBlendFuncSeparate;
-import static org.lwjgl.opengl.GL30.*;
-import static org.lwjgl.opengl.GL40.glBlendFuncSeparatei;
-import static org.lwjgl.opengl.GL45.glTextureBarrier;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import com.mojang.blaze3d.vertex.PoseStack;
+import static org.lwjgl.opengl.GL11.glFinish;
 
-public class ModelTextureBakery {
+public class SoftwareModelTextureBakery {
     //Note: the first bit of metadata is if alpha discard is enabled
     private static final Matrix4f[] VIEWS = new Matrix4f[6];
 
-    private final GlViewCapture capture;
     private final ReuseVertexConsumer vc = new ReuseVertexConsumer();
+    private final SoftwareRasterizer rasterizer = new SoftwareRasterizer();
 
-    private final int width;
-    private final int height;
-    public ModelTextureBakery(int width, int height) {
-        this.capture = new GlViewCapture(width, height);
-        this.width = width;
-        this.height = height;
+    public SoftwareModelTextureBakery() {
+    }
+
+    public void setupTexture() {
+        var tex = Minecraft.getInstance().getTextureManager().getTexture(Identifier.fromNamespaceAndPath("minecraft", "textures/atlas/blocks.png")).getTexture();
+        if (tex.getFormat() != TextureFormat.RGBA8) {
+            throw new IllegalStateException("Block atlas not rgba8");
+        }
+
+        int targetMipLevel = 0;// Math.min(tex.getMipLevels(), 4)-1;//todo: we want to target the mip layer that has the 16x16 sized textures
+
+        int width = tex.getWidth(targetMipLevel);
+        int height = tex.getHeight(targetMipLevel);
+        GpuBuffer gpuBuffer = RenderSystem.getDevice().createBuffer(() -> "Texture output buffer", 9, (4L*width)*height);//USAGE_COPY_SRC|USAGE_MAP_READ
+        CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();
+        boolean[] done = new boolean[1];
+        Runnable runnable = () -> {
+            var texture = new int[width*height];
+            final long BATCH_SIZE = (1L<<31)-(1L<<20);
+            for (long offset = 0; offset < (4L*width)*height; offset += BATCH_SIZE) {
+                long size = Math.min((4L*width)*height-offset, BATCH_SIZE);
+                try (GpuBuffer.MappedView mappedView = commandEncoder.mapBuffer(gpuBuffer.slice(offset, size), true, false)) {
+                    mappedView.data().asIntBuffer().get(texture, (int) (offset/4), (int) (size/4));
+                }
+            }
+            this.rasterizer.setSamplerTexture(texture, width, height);
+            gpuBuffer.close();
+            done[0] = true;
+        };
+
+        commandEncoder.copyTextureToBuffer(tex, gpuBuffer, 0, runnable, targetMipLevel);
+        glFinish();//Required for intel since they dont insert there own flush in, causing this loop to never exit
+        while (!done[0]) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            RenderSystem.executePendingTasks();
+        }
     }
 
     public static int getMetaFromLayer(ChunkSectionLayer layer) {
         boolean hasDiscard = layer == ChunkSectionLayer.CUTOUT ||
                 layer == ChunkSectionLayer.TRANSLUCENT||
-                layer == ChunkSectionLayer.TRIPWIRE;
-
-        boolean isMipped = layer == ChunkSectionLayer.SOLID ||
-                layer == ChunkSectionLayer.TRANSLUCENT ||
                 layer == ChunkSectionLayer.TRIPWIRE;
 
         int meta = hasDiscard?1:0;
@@ -167,13 +202,17 @@ public class ModelTextureBakery {
     }
 
     public void free() {
-        this.capture.free();
         this.vc.free();
     }
 
+    private static final long SINGLE_FACE_OUTPUT_SIZE = (ModelFactory.MODEL_TEXTURE_SIZE * ModelFactory.MODEL_TEXTURE_SIZE)*8;
+    //The outputBuffer layout is different from the non software rasterized ModelTextureBakery
+    // in this version the values are simply appended (0,0),(1,0),(2,0),(0,1),(1,1),(2,1)
 
-    public int renderToStream(BlockState state, int streamBuffer, int streamOffset) {
-        this.capture.clear();
+    public int renderToOutput(BlockState state, long outputBuffer) {
+        MemoryUtil.memSet(outputBuffer,0,16*16*8*6);
+
+
         boolean isBlock = true;
         ChunkSectionLayer layer;
         if (state.getBlock() instanceof LiquidBlock) {
@@ -193,34 +232,11 @@ public class ModelTextureBakery {
             //bbem = BakedBlockEntityModel.bake(state);
         }
 
-        //Setup GL state
-        int[] viewdat = new int[4];
-        int blockTextureId;
-
         {
-            glEnable(GL_STENCIL_TEST);
-            glEnable(GL_DEPTH_TEST);
-            glEnable(GL_CULL_FACE);
-            if (layer == ChunkSectionLayer.TRANSLUCENT) {
-                glEnablei(GL_BLEND, 0);
-                glDisablei(GL_BLEND, 1);
-                ARBDrawBuffersBlend.glBlendFuncSeparateiARB(0, GL_ONE_MINUS_DST_ALPHA, GL_DST_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-            } else {
-                glDisable(GL_BLEND);//FUCK YOU INTEL (screams), for _some reason_ discard or something... JUST DOESNT WORK??
-                //glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ONE, GL_ONE);
-            }
+            this.rasterizer.setBlending(layer == ChunkSectionLayer.TRANSLUCENT);
 
-            glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-            glStencilFunc(GL_ALWAYS, 1, 0xFF);
-            glStencilMask(0xFF);
-
-            glGetIntegerv(GL_VIEWPORT, viewdat);//TODO: faster way todo this, or just use main framebuffer resolution
-
-            //Bind the capture framebuffer
-            glBindFramebuffer(GL_FRAMEBUFFER, this.capture.framebuffer.id);
-
-            var tex = Minecraft.getInstance().getTextureManager().getTexture(Identifier.fromNamespaceAndPath("minecraft", "textures/atlas/blocks.png")).getTexture();
-            blockTextureId = ((com.mojang.blaze3d.opengl.GlTexture)tex).glId();
+            //var tex = Minecraft.getInstance().getTextureManager().getTexture(Identifier.fromNamespaceAndPath("minecraft", "textures/atlas/blocks.png")).getTexture();
+            //blockTextureId = ((com.mojang.blaze3d.opengl.GlTexture)tex).glId();
         }
 
         boolean isAnyShaded = false;
@@ -231,111 +247,31 @@ public class ModelTextureBakery {
             isAnyShaded |= this.vc.anyShaded;
             isAnyDarkend |= this.vc.anyDarkendTex;
             if (!this.vc.isEmpty()) {//only render if there... is shit to render
-
-                //Setup for continual emission
-                BudgetBufferRenderer.setup(this.vc.getAddress(), this.vc.quadCount(), blockTextureId);//note: this.vc.buffer.address NOT this.vc.ptr
-
-                var mat = new Matrix4f();
                 for (int i = 0; i < VIEWS.length; i++) {
-                    if (i==1||i==2||i==4) {
-                        glCullFace(GL_FRONT);
-                    } else {
-                        glCullFace(GL_BACK);
-                    }
+                    this.rasterizer.setFaceCull(i==1||i==2||i==4);
 
-                    glViewport((i % 3) * this.width, (i / 3) * this.height, this.width, this.height);
-
-                    //The projection matrix
-                    mat.set(2, 0, 0, 0,
-                            0, 2, 0, 0,
-                            0, 0, -1f, 0,
-                            -1, -1, 0, 1)
-                            .mul(VIEWS[i]);
-
-                    BudgetBufferRenderer.render(mat);
+                    this.rasterizer.raster(VIEWS[i], this.vc);
+                    UnsafeUtil.memcpy(this.rasterizer.getRawFramebuffer(), outputBuffer+(SINGLE_FACE_OUTPUT_SIZE*i));
                 }
             }
-            glBindVertexArray(0);
         } else {//Is fluid, slow path :(
 
             if (!(state.getBlock() instanceof LiquidBlock)) throw new IllegalStateException();
-
-            var mat = new Matrix4f();
             for (int i = 0; i < VIEWS.length; i++) {
-                if (i==1||i==2||i==4) {
-                    glCullFace(GL_FRONT);
-                } else {
-                    glCullFace(GL_BACK);
-                }
-
                 this.vc.reset();
                 this.bakeFluidState(state, layer, i);
                 if (this.vc.isEmpty()) continue;
                 isAnyShaded |= this.vc.anyShaded;
                 isAnyDarkend |= this.vc.anyDarkendTex;
-                BudgetBufferRenderer.setup(this.vc.getAddress(), this.vc.quadCount(), blockTextureId);
 
-                glViewport((i % 3) * this.width, (i / 3) * this.height, this.width, this.height);
-
-                //The projection matrix
-                mat.set(2, 0, 0, 0,
-                        0, 2, 0, 0,
-                        0, 0, -1f, 0,
-                        -1, -1, 0, 1)
-                        .mul(VIEWS[i]);
-
-                BudgetBufferRenderer.render(mat);
-            }
-            glBindVertexArray(0);
-        }
-
-        //Render block model entity data if it exists
-        /*
-        if (bbem != null) {
-            //Rerender everything again ;-; but is ok (is not)
-
-            var mat = new Matrix4f();
-            for (int i = 0; i < VIEWS.length; i++) {
-                if (i==1||i==2||i==4) {
-                    glCullFace(GL_FRONT);
-                } else {
-                    glCullFace(GL_BACK);
-                }
-
-                glViewport((i % 3) * this.width, (i / 3) * this.height, this.width, this.height);
+                this.rasterizer.setFaceCull(i==1||i==2||i==4);
 
                 //The projection matrix
-                mat.set(2, 0, 0, 0,
-                        0, 2, 0, 0,
-                        0, 0, -1f, 0,
-                        -1, -1, 0, 1)
-                        .mul(VIEWS[i]);
-
-                bbem.render(mat, blockTextureId);
+                this.rasterizer.raster(VIEWS[i], this.vc);
+                UnsafeUtil.memcpy(this.rasterizer.getRawFramebuffer(), outputBuffer+(SINGLE_FACE_OUTPUT_SIZE*i));
             }
-            glBindVertexArray(0);
-
-            bbem.release();
-        }*/
-
-
-
-        //"Restore" gl state
-        glViewport(viewdat[0], viewdat[1], viewdat[2], viewdat[3]);
-        glDisable(GL_STENCIL_TEST);
-        glDisable(GL_BLEND);
-
-        //Finish and download
-        glTextureBarrier();
-        this.capture.emitToStream(streamBuffer, streamOffset);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, this.capture.framebuffer.id);
-        glClearDepth(1);
-        glClear(GL_DEPTH_BUFFER_BIT);
-        if (layer == ChunkSectionLayer.TRANSLUCENT) {
-            //reset the blend func
-            GL14.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         }
+
 
         return (isAnyShaded?1:0)|(isAnyDarkend?2:0);
     }
@@ -363,7 +299,15 @@ public class ModelTextureBakery {
         stack.mulPose(makeQuatFromAxisExact(new Vector3f(0,1,0), yaw));
         stack.mulPose(new Matrix4f().scale(1-2*(flip&1), 1-(flip&2), 1-((flip>>1)&2)));
         stack.translate(-0.5f,-0.5f,-0.5f);
-        VIEWS[i] = new Matrix4f(stack.last().pose());
+        var mat = new Matrix4f(stack.last().pose());
+
+        mat = new Matrix4f().set(
+                        2,0,0,0,
+                        0,2,0,0,
+                        0,0,-2,0,
+                        -1,-1,1,1)
+                .mul(mat);
+        VIEWS[i] = mat;
     }
 
     private static Quaternionf makeQuatFromAxisExact(Vector3f vec, float angle) {

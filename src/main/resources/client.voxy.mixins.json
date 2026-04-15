@@ -12,7 +12,6 @@
     "iris.MixinIrisSamplers",
     "iris.MixinLevelRenderer",
     "iris.MixinMatrixUniforms",
-    "iris.MixinPackRenderTargetDirectives",
     "iris.MixinProgramSet",
     "iris.MixinShaderPackSourceNames",
     "iris.MixinStandardMacros",
@@ -35,11 +34,12 @@
     "sodium.MixinDefaultChunkRenderer",
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSectionManager",
-    "sodium.MixinSodiumWorldRenderer",
-    "sodium.MixinVideoSettingsScreen",
-    "minecraft.MixinLayerLightSectionStorage"
+    "sodium.MixinSodiumWorldRenderer"
   ],
   "injectors": {
     "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
   }
 }

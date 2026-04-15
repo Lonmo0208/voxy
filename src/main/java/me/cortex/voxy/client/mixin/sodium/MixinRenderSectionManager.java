@@ -40,7 +40,7 @@ public class MixinRenderSectionManager {
     @Inject(method = "<init>", at = @At("TAIL"))
     private void voxy$resetChunkTracker(ClientLevel level, int renderDistance, SortBehavior sortBehavior, CommandList commandList, CallbackInfo ci) {
         if (level.levelRenderer != null) {
-            var system = ((IGetVoxyRenderSystem)(level.levelRenderer)).getVoxyRenderSystem();
+            var system = ((IGetVoxyRenderSystem)(level.levelRenderer)).voxy$getRenderSystem();
             if (system != null) {
                 system.chunkBoundRenderer.reset();
             }
@@ -49,7 +49,7 @@ public class MixinRenderSectionManager {
     }
 
     @Inject(method = "onChunkRemoved", at = @At("HEAD"))
-    private void injectIngest(int x, int z, CallbackInfo ci) {
+    private void voxy$injectIngest(int x, int z, CallbackInfo ci) {
         //TODO: Am not quite sure if this is right
         if (VoxyConfig.CONFIG.ingestEnabled && !BOBBY_INSTALLED) {
             var cccm = (ICheekyClientChunkCache)this.level.getChunkSource();
@@ -106,7 +106,7 @@ public class MixinRenderSectionManager {
         if (flags == 0)//Only process things with stuff
             return true;
 
-        VoxyRenderSystem system = ((IGetVoxyRenderSystem)(this.level.levelRenderer)).getVoxyRenderSystem();
+        VoxyRenderSystem system = ((IGetVoxyRenderSystem)(this.level.levelRenderer)).voxy$getRenderSystem();
         if (system == null) {
             return true;
         }
@@ -122,16 +122,23 @@ public class MixinRenderSectionManager {
                 this.cachedChunkStatus = tracker.getOrDefault(key, 0);
             }
             if (this.cachedChunkStatus == 3) {//If this chunk still has surrounding chunks
-                var section = this.level.getChunk(x,z).getSection(y-this.bottomSectionY);
-                var lp = this.level.getLightEngine();
+                var cccm = this.level.getChunkSource();
+                //var chunk = ((ICheekyClientChunkCache)cccm).voxy$cheekyGetChunk(x, z);
+                //Dont thinks need to use cheekyGetChunk here as thats handled by the inject into head of onChunkRemoved
+                // but only ingest if the chunkstatus is full and exists
+                var chunk = cccm.getChunk(x, z, ChunkStatus.FULL, false);
+                if (chunk != null) {
+                    var section = chunk.getSection(y - this.bottomSectionY);
+                    var lp = this.level.getLightEngine();
 
-                var csp = SectionPos.of(x,y,z);
-                var blp = lp.getLayerListener(LightLayer.BLOCK).getDataLayerData(csp);
-                var slp = lp.getLayerListener(LightLayer.SKY).getDataLayerData(csp);
+                    var csp = SectionPos.of(x, y, z);
+                    var blp = lp.getLayerListener(LightLayer.BLOCK).getDataLayerData(csp);
+                    var slp = lp.getLayerListener(LightLayer.SKY).getDataLayerData(csp);
 
-                //Note: we dont do this check and just blindly ingest, it shouldbe ok :tm:
-                //if (blp != null || slp != null)
-                    VoxelIngestService.rawIngest(system.getEngine(), section, x,y,z, blp==null?null:blp.copy(), slp==null?null:slp.copy());
+                    //Note: we dont do this check and just blindly ingest, it shouldbe ok :tm:
+                    //if (blp != null || slp != null)
+                        VoxelIngestService.rawIngest(system.getEngine(), section, x, y, z, blp == null ? null : blp.copy(), slp == null ? null : slp.copy());
+                }
             }
         }
 
