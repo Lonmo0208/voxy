@@ -1,7 +1,6 @@
 package me.cortex.voxy.client.core.model.bakery;
 
 import me.cortex.voxy.client.core.model.ModelFactory;
-import net.caffeinemc.mods.sodium.client.util.color.ColorSRGB;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -69,12 +68,15 @@ public class SoftwareRasterizer {
         return this.samplerTexture[this.samplerWidth*pv+pu];
     }
 
-    public void raster(Matrix4f mvp, ReuseVertexConsumer vertices) {
+    public void clear() {
         Arrays.fill(this.framebuffer, CLEAR_VALUE);
+    }
 
+    public void raster(Matrix4f mvp, ReuseVertexConsumer vertices) {
+        if (vertices.isEmpty()) return;
         int qc = vertices.quadCount();
         for (int i = 0; i < qc; i++) {
-            this.rasterQuad(mvp, vertices.getAddress()+ReuseVertexConsumer.VERTEX_FORMAT_SIZE*4*i);
+            this.rasterQuad(mvp, vertices.getAddress()+ReuseVertexConsumer.VERTEX_FORMAT_SIZE*4L*i);
         }
         //Arrays.fill(this.framebuffer, -1);
     }
@@ -170,6 +172,7 @@ public class SoftwareRasterizer {
 
 
         final int ALPHA_CUTOFF_THRESHOLD = 0;
+        //TODO: meta&1 OR if we are blending
         if ((meta&1)!=0 && (colour>>>24)<=ALPHA_CUTOFF_THRESHOLD) {//Discard on small alpha
             return;
         }
