@@ -8,6 +8,7 @@ import me.cortex.voxy.common.world.service.VoxelIngestService;
 import me.cortex.voxy.commonImpl.VoxyCommon;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
+import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.executor.ChunkBuilder;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
@@ -93,16 +94,19 @@ public class MixinRenderSectionManager {
 
     @Redirect(method = "updateSectionInfo", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;setInfo(Lnet/caffeinemc/mods/sodium/client/render/chunk/data/BuiltSectionInfo;)Z"))
     private boolean voxy$updateOnUpload(RenderSection instance, BuiltSectionInfo info) {
-        boolean wasBuilt = instance.getFlags()!=0;
-        int flags = instance.getFlags();
+        RenderRegion region = instance.getRegion();
+        int sectionIndex = instance.getSectionIndex();
+        int prevFlags = region.getSectionFlags(sectionIndex) & 0xFF;
+        boolean wasBuilt = prevFlags != 0;
         if (!instance.setInfo(info)) {
             return false;
         }
-        if (wasBuilt == (instance.getFlags()!=0)) {//Only want to do stuff on change
+        int newFlags = region.getSectionFlags(sectionIndex) & 0xFF;
+        if (wasBuilt == (newFlags != 0)) {//Only want to do stuff on change
             return true;
         }
 
-        flags |= instance.getFlags();
+        int flags = prevFlags | newFlags;
         if (flags == 0)//Only process things with stuff
             return true;
 
