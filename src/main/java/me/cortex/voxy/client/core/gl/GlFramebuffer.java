@@ -52,6 +52,10 @@ public class GlFramebuffer extends TrackedObject {
         return this;
     }
 
+    public boolean isComplete() {
+        return glCheckNamedFramebufferStatus(this.id, GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    }
+
 
     public GlFramebuffer name(String name) {
         return GlDebug.name(name, this);

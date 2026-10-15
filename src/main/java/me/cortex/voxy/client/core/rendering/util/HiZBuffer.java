@@ -6,6 +6,7 @@ import me.cortex.voxy.client.core.gl.GlTexture;
 import me.cortex.voxy.client.core.gl.GlVertexArray;
 import me.cortex.voxy.client.core.gl.shader.Shader;
 import me.cortex.voxy.client.core.gl.shader.ShaderType;
+import me.cortex.voxy.common.Logger;
 import org.lwjgl.opengl.GL11;
 
 import static org.lwjgl.opengl.ARBDirectStateAccess.*;
@@ -21,6 +22,7 @@ import static org.lwjgl.opengl.GL42C.glMemoryBarrier;
 import static org.lwjgl.opengl.GL45C.glTextureBarrier;
 
 public class HiZBuffer {
+    private static boolean LOGGED_ALLOC_FAILURE;
     private final Shader hiz;
     private final GlFramebuffer fb = new GlFramebuffer().name("HiZ");
     private final int sampler = glGenSamplers();
@@ -47,13 +49,21 @@ public class HiZBuffer {
     }
 
     private void alloc(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            //Transient invalid size, likely a resize/surface reconfiguration mid frame, retry next frame
+            return;
+        }
         this.levels = (int)Math.ceil(Math.log(Math.max(width, height))/Math.log(2));
         //We dont care about e.g. 1x1 size texture since you dont get meshlets that big to cover such a large area
         //this.levels -= 1;//Arbitrary size, shinks the max level by alot and saves a significant amount of processing time
         // (could probably increase it to be defined by a max meshlet coverage computation thing)
 
+        //Drain any stale gl errors so the allocation result below can be checked
+        while (glGetError() != GL_NO_ERROR) {}
+
         //GL_DEPTH_COMPONENT32F //Cant use this as it does not match the depth format of the provided depth buffer
         this.texture = new GlTexture().store(this.type, this.levels, width, height).name("HiZ");
+        int allocError = glGetError();//Read before the parameter calls so their errors cannot mask the allocation result
         glTextureParameteri(this.texture.id, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
         glTextureParameteri(this.texture.id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTextureParameteri(this.texture.id, GL_TEXTURE_COMPARE_MODE, GL_NONE);
@@ -66,19 +76,41 @@ public class HiZBuffer {
         glSamplerParameteri(this.sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glSamplerParameteri(this.sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+        if (allocError != GL_NO_ERROR || !this.fb.bind(GL_DEPTH_ATTACHMENT, this.texture, 0).isComplete()) {
+            //The texture can transiently be left without storage (other mods reconfiguring the gl context/surface,
+            //driver hiccups, invalid sizes), which would otherwise throw an incomplete framebuffer exception and
+            //kill the client. Free it and retry on the next frame instead
+            this.texture.free();
+            this.texture = null;
+            this.levels = 0;
+            this.width = 0;
+            this.height = 0;
+            while (glGetError() != GL_NO_ERROR) {}//Dont leave our failed allocation error in the queue for other mods
+            if (!LOGGED_ALLOC_FAILURE) {
+                LOGGED_ALLOC_FAILURE = true;
+                Logger.warn("Unable to allocate the HiZ buffer (gl error: " + allocError + "), skipping frames until it succeeds");
+            }
+            return;
+        }
+
         this.width  = width;
         this.height = height;
-
-        this.fb.bind(GL_DEPTH_ATTACHMENT, this.texture, 0).verify();
     }
 
     public void buildMipChain(int srcDepthTex, int width, int height) {
+        if (width <= 0 || height <= 0) {
+            //Nothing sensible to build for an invalid size
+            return;
+        }
         if (this.width != Integer.highestOneBit(width) || this.height != Integer.highestOneBit(height)) {
             if (this.texture != null) {
                 this.texture.free();
                 this.texture = null;
             }
             this.alloc(Integer.highestOneBit(width), Integer.highestOneBit(height));
+            if (this.texture == null) {
+                return;//Allocation failed (see alloc), retry next frame
+            }
         }
         glBindVertexArray(GlVertexArray.STATIC_VAO);
         int boundFB = GL11.glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
@@ -125,6 +157,10 @@ public class HiZBuffer {
         }
         glDeleteSamplers(this.sampler);
         this.hiz.free();
+    }
+
+    public boolean isBuilt() {
+        return this.texture != null;
     }
 
     public int getHizTextureId() {

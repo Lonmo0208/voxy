@@ -201,6 +201,11 @@ public abstract class AbstractRenderPipeline extends TrackedObject {
 
         //Compute the mip chain
         viewport.hiZBuffer.buildMipChain(depthBuffer, viewport.width, viewport.height);
+        if (!viewport.hiZBuffer.isBuilt()) {
+            //The HiZ buffer could not be allocated this frame (e.g. a transient gl/context state while the window
+            //surface is being reconfigured), skip rendering instead of using a missing HiZ texture
+            return;
+        }
 
         do {
             TimingStatistics.main.stop();

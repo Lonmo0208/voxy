@@ -262,6 +262,7 @@ dependencies {
     smartDependency("modmenu_version", true)
     smartDependency("lithium_version", true)
     smartDependency("iris_version")
+    smartDependency("ixeris_version")
     smartDependency("chunky_version")
     smartDependency("vivecraft_version")
     smartDependency("flashback_version")
