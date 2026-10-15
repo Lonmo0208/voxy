@@ -1,6 +1,6 @@
 package me.cortex.voxy.client.core.rendering.util;
 
-import com.mojang.renderpearl.backend.opengl.GlTexture;
+import com.mojang.blaze3d.opengl.GlTexture;
 import net.minecraft.client.Minecraft;
 
 import static org.lwjgl.opengl.GL11C.*;

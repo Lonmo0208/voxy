@@ -422,7 +422,7 @@ public class IrisShaderPatch {
         var parser = new ASTParser();
         var transform = new SingleASTTransformer<>((translationUnit, root)->{
             root.replaceReferenceExpressions(parser, "gl_FragCoord", "(vec4(gl_FragCoord.xy,1.0-gl_FragCoord.z,gl_FragCoord.w))");
-            DepthTransformerAccessor.voxy$invertDepthReads(parser, translationUnit, root, DepthTransformerAccessor.voxy$getDepthSamplers());
+            DepthTransformerAccessor.voxy$invertDepthReads(parser, translationUnit, root);
         });
         return transform.transform(scr);
         //scr = scr.replaceAll("(?<!\\w)?gl_FragCoord(?=\\W|$)", "(vec4(gl_FragCoord.xy,1.0-gl_FragCoord.z,gl_FragCoord.w))");

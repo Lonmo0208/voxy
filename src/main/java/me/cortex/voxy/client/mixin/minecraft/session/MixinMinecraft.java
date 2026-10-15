@@ -2,11 +2,12 @@ package me.cortex.voxy.client.mixin.minecraft.session;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.renderpearl.api.device.BackendCreationException;
-import com.mojang.renderpearl.api.device.GpuBackend;
-import com.mojang.renderpearl.api.device.GpuDebugOptions;
-import com.mojang.renderpearl.api.device.GpuDevice;
-import com.mojang.renderpearl.backend.vulkan.VulkanBackend;
+import com.mojang.blaze3d.shaders.GpuDebugOptions;
+import com.mojang.blaze3d.shaders.ShaderSource;
+import com.mojang.blaze3d.systems.BackendCreationException;
+import com.mojang.blaze3d.systems.GpuBackend;
+import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.blaze3d.vulkan.VulkanBackend;
 import me.cortex.voxy.client.ClientSessionEvents;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,12 +17,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Minecraft.class)
 public class MixinMinecraft {
-    @WrapOperation(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/device/GpuBackend;createDevice(Lcom/mojang/renderpearl/api/device/GpuDebugOptions;)Lcom/mojang/renderpearl/api/device/GpuDevice;"))
-    private static GpuDevice voxy$forceOpenglDevice(GpuBackend instance, GpuDebugOptions gpuDebugOptions, Operation<GpuDevice> original) throws BackendCreationException {
+    @WrapOperation(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/GpuBackend;createDevice(JLcom/mojang/blaze3d/shaders/ShaderSource;Lcom/mojang/blaze3d/shaders/GpuDebugOptions;Ljava/lang/Runnable;)Lcom/mojang/blaze3d/systems/GpuDevice;"))
+    private static GpuDevice voxy$forceOpenglDevice(GpuBackend instance, long window, ShaderSource shaderSource, GpuDebugOptions gpuDebugOptions, Runnable onError, Operation<GpuDevice> original) throws BackendCreationException {
         if (instance instanceof VulkanBackend) {
             throw new BackendCreationException("Voxy does not presently support vulkan", BackendCreationException.Reason.OTHER);
         }
-        return original.call(instance, gpuDebugOptions);
+        return original.call(instance, window, shaderSource, gpuDebugOptions, onError);
     }
 
 
